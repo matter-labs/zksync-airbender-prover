@@ -1,0 +1,10 @@
+# Cargo artifact folder
+/target/
+
+# Cargo package backup files
+**/*.rs.bk
+
+# If you use VSCode/IntelliJ, add their project files (optional):
+*.rs.zip
+.idea/
+.vscode/
