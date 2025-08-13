@@ -46,9 +46,12 @@ enum Commands {
     PickSnark {},
     /// Submits block's SNARK proof to sequencer
     SubmitSnark {
-        /// Block number to submit the SNARK proof for
-        #[arg(short, long, value_name = "BLOCK")]
-        block: u32,
+        /// The SNARK aggregates proofs starting from this block number
+        #[arg(short, long, value_name = "FROM_BLOCK")]
+        from_block_number: u32,
+        /// The SNARK aggregates proofs up to this block number (inclusive)
+        #[arg(short, long, value_name = "TO_BLOCK")]
+        to_block_number: u32,
         /// Path to the SNARK proof file to submit
         #[arg(short, long, value_name = "SNARK_PATH")]
         path: String,
@@ -99,13 +102,12 @@ async fn main() -> Result<()> {
             //     }
             // }
         }
-        Commands::SubmitSnark { block, path } => {
-            todo!();
-            // tracing::info!("Submitting SNARK proof for block {block} with proof from {path} to sequencer at {}", url);
-            // let file = std::fs::File::open(path)?;
-            // let snark_wrapper: SnarkWrapperProof = serde_json::from_reader(file)?;
-            // client.submit_snark_proof(L2BlockNumber(block), snark_wrapper).await?;
-            // tracing::info!("Submitted proof for block {block} to sequencer at {}", url);
+        Commands::SubmitSnark { from_block_number, to_block_number, path } => {
+            tracing::info!("Submitting SNARK proof for blocks [{from_block_number}, {to_block_number}] with proof from {path} to sequencer at {}", url);
+            let file = std::fs::File::open(path)?;
+            let snark_wrapper: SnarkWrapperProof = serde_json::from_reader(file)?;
+            client.submit_snark_proof(L2BlockNumber(from_block_number), L2BlockNumber(to_block_number), snark_wrapper).await?;
+            tracing::info!("Submitted proof for blocks [{from_block_number}, {to_block_number}] to sequencer at {}", url);
         }
     }
 
