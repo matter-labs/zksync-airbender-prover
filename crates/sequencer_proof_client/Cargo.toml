@@ -13,6 +13,9 @@ categories.workspace = true
 [dependencies]
 zkos_wrapper.workspace = true
 zksync_airbender_execution_utils.workspace = true
+bellman.workspace = true
+circuit_definitions.workspace = true
+crypto_codegen.workspace = true
 
 anyhow.workspace = true
 base64.workspace = true

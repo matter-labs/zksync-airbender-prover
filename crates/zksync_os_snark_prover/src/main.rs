@@ -6,8 +6,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::time::{Duration, Instant};
-use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
-use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{create_final_proofs_from_program_proof, create_proofs_internal, generate_oracle_data_from_metadata_and_proof_list, load_binary_from_path, program_proof_from_proof_list_and_metadata, proof_list_and_metadata_from_program_proof, GpuSharedState, VerifierCircuitsIdentifiers};
@@ -240,20 +238,8 @@ async fn run_linking_fri_snark(
                 .to_str()
                 .unwrap(),
         );
-        let serialized_snark_proof = serde_json::to_string(&snark_proof)?;
 
-        let codegen_snark_proof: PlonkProof<Bn256, ZkSyncSnarkWrapperCircuit> =
-            serde_json::from_str(&serialized_snark_proof)?;
-        let (_, serialized_proof) = crypto_codegen::serialize_proof(&codegen_snark_proof);
-
-        let mut byte_serialized_proof = vec![];
-        for val in serialized_proof.iter() {
-            let mut buf = [0u8; 32];
-            val.to_big_endian(&mut buf);
-            byte_serialized_proof.extend_from_slice(&buf);
-        }
-
-        match sequencer_client.submit_snark_proof(start_block, end_block, byte_serialized_proof).await {
+        match sequencer_client.submit_snark_proof(start_block, end_block, snark_proof).await {
             Ok(()) => {
                 tracing::info!("Successfully submitted SNARK proof for blocks {} to {}", start_block, end_block);
             }

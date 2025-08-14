@@ -5065,7 +5065,6 @@ name = "zksync_os_snark_prover"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "circuit_definitions",
  "clap",
  "cli",
  "execution_utils",
@@ -5075,9 +5074,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zkos-wrapper",
- "zksync_bellman 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "zksync_sequencer_proof_client",
- "zksync_solidity_vk_codegen",
 ]
 
 [[package]]
@@ -5112,6 +5109,7 @@ dependencies = [
  "anyhow",
  "base64",
  "bincode",
+ "circuit_definitions",
  "clap",
  "execution_utils",
  "reqwest",
@@ -5121,6 +5119,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zkos-wrapper",
+ "zksync_bellman 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zksync_solidity_vk_codegen",
 ]
 
 [[package]]
