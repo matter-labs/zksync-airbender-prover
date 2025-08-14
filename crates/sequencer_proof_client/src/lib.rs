@@ -124,13 +124,12 @@ impl SequencerProofClient {
             serde_json::from_str(&serialized_proof)?;
         let (_, serialized_proof) = crypto_codegen::serialize_proof(&codegen_snark_proof);
 
-        let mut byte_serialized_proof = vec![];
-        for val in serialized_proof.iter() {
+        let byte_serialized_proof= serialized_proof.iter().map(|chunk| {
             let mut buf = [0u8; 32];
-            val.to_big_endian(&mut buf);
-            byte_serialized_proof.extend_from_slice(&buf);
-        }
-        let serialized = bincode::serialize(proof)?;
-        Ok(general_purpose::STANDARD.encode(serialized))
+            chunk.to_big_endian(&mut buf);
+            buf
+        }).flatten().collect::<Vec<u8>>();
+
+        Ok(general_purpose::STANDARD.encode(byte_serialized_proof))
     }
 }
