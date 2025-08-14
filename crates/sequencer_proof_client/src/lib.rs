@@ -2,6 +2,8 @@
 
 use std::fmt;
 use anyhow::{anyhow, Context};
+use base64::Engine;
+use base64::engine::general_purpose;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use zkos_wrapper::SnarkWrapperProof;
@@ -92,12 +94,13 @@ impl SequencerProofClient {
         }
     }
 
-    pub async fn submit_snark_proof(&self, from_block_number: L2BlockNumber, to_block_number: L2BlockNumber, proof: SnarkWrapperProof) -> anyhow::Result<()> {
+    pub async fn submit_snark_proof(&self, from_block_number: L2BlockNumber, to_block_number: L2BlockNumber, proof: Vec<u8>) -> anyhow::Result<()> {
         let url = format!("{}/prover-jobs/SNARK/submit", self.url);
+
         let payload = SubmitSnarkProofPayload {
             block_number_from: from_block_number.0 as u64,
             block_number_to: to_block_number.0 as u64,
-            proof: base64::encode(bincode::serialize(&proof)?),
+            proof: general_purpose::STANDARD.encode(&proof),
         };
         self.client
             .post(&url)
