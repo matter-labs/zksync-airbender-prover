@@ -106,7 +106,7 @@ impl SequencerProofClient {
         let payload = SubmitSnarkProofPayload {
             block_number_from: from_block_number.0 as u64,
             block_number_to: to_block_number.0 as u64,
-            proof: general_purpose::STANDARD.encode(&serialized_proof),
+            proof: serialized_proof,
         };
         self.client
             .post(&url)
