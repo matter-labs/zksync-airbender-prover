@@ -238,6 +238,7 @@ async fn run_linking_fri_snark(
                 .to_str()
                 .unwrap(),
         );
+
         match sequencer_client.submit_snark_proof(start_block, end_block, snark_proof).await {
             Ok(()) => {
                 tracing::info!("Successfully submitted SNARK proof for blocks {} to {}", start_block, end_block);

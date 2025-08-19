@@ -112,7 +112,7 @@ fn create_proof(
         prover_input,
         &Machine::Standard,
         // FIXME: figure out how many instances (currently gpu ignores this).
-        100,
+        1000,
         None,
         #[cfg(feature = "gpu")]
         &mut Some(gpu_state),
@@ -154,7 +154,7 @@ pub async fn run(args: Args) {
         ".".to_string()
     };
     let binary_path = args.app_bin_path.unwrap_or_else(|| {
-            Path::new(&manifest_path).join("../../app.bin")
+            Path::new(&manifest_path).join("../../multiblock_batch.bin")
     });
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
     let mut gpu_state = GpuSharedState::new(&binary);

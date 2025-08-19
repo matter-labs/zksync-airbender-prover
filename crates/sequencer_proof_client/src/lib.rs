@@ -2,10 +2,15 @@
 
 use std::fmt;
 use anyhow::{anyhow, Context};
+use base64::Engine;
+use base64::engine::general_purpose;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
+use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
+use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord
 )]
@@ -94,10 +99,14 @@ impl SequencerProofClient {
 
     pub async fn submit_snark_proof(&self, from_block_number: L2BlockNumber, to_block_number: L2BlockNumber, proof: SnarkWrapperProof) -> anyhow::Result<()> {
         let url = format!("{}/prover-jobs/SNARK/submit", self.url);
+
+        let serialized_proof = self.serialize_snark_proof(&proof)
+            .context("Failed to serialize SNARK proof")?;
+
         let payload = SubmitSnarkProofPayload {
             block_number_from: from_block_number.0 as u64,
             block_number_to: to_block_number.0 as u64,
-            proof: base64::encode(bincode::serialize(&proof)?),
+            proof: serialized_proof,
         };
         self.client
             .post(&url)
@@ -106,5 +115,21 @@ impl SequencerProofClient {
             .await?
             .error_for_status()?;
         Ok(())
+    }
+
+    fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String> {
+        let serialized_proof = serde_json::to_string(&proof)?;
+
+        let codegen_snark_proof: PlonkProof<Bn256, ZkSyncSnarkWrapperCircuit> =
+            serde_json::from_str(&serialized_proof)?;
+        let (_, serialized_proof) = crypto_codegen::serialize_proof(&codegen_snark_proof);
+
+        let byte_serialized_proof= serialized_proof.iter().map(|chunk| {
+            let mut buf = [0u8; 32];
+            chunk.to_big_endian(&mut buf);
+            buf
+        }).flatten().collect::<Vec<u8>>();
+
+        Ok(general_purpose::STANDARD.encode(byte_serialized_proof))
     }
 }
