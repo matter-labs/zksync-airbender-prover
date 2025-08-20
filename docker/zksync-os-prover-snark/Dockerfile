@@ -1,0 +1,48 @@
+FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu24.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# set of args for use of sccache
+ARG SCCACHE_GCS_BUCKET=""
+ARG SCCACHE_GCS_SERVICE_ACCOUNT=""
+ARG SCCACHE_GCS_RW_MODE=""
+ARG RUSTC_WRAPPER=""
+
+ENV SCCACHE_GCS_BUCKET=${SCCACHE_GCS_BUCKET}
+ENV SCCACHE_GCS_SERVICE_ACCOUNT=${SCCACHE_GCS_SERVICE_ACCOUNT}
+ENV SCCACHE_GCS_RW_MODE=${SCCACHE_GCS_RW_MODE}
+ENV RUSTC_WRAPPER=${RUSTC_WRAPPER}
+
+ARG CUDA_ARCH=89
+ENV CUDAARCHS=${CUDA_ARCH}
+
+RUN apt-get update && apt-get install -y curl clang openssl libssl-dev gcc g++ git \
+    pkg-config build-essential libclang-dev cmake sccache && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+
+WORKDIR /usr/src/zksync
+COPY . .
+
+RUN curl -Lo /setup_compact.key https://storage.googleapis.com/matterlabs-setup-keys-europe/setup-keys/setup_compact.key
+
+RUN cargo build -p zksync_os_snark_prover --release
+
+###############
+
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+
+# HACK copying to root is the only way to make Docker layer caching work for these files for some reason
+COPY --from=builder /setup_compact.key /setup_compact.key
+
+RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY multiblock_batch.bin /multiblock_batch.bin
+COPY --from=builder /usr/src/zksync/target/release/zksync_os_snark_prover /usr/bin/
+
+ENTRYPOINT ["zksync_os_snark_prover"]
