@@ -28,7 +28,7 @@ jobs:
   build-push-prover-images:
     name: Build and push images
     needs: [setup]
-    uses: ./.github/workflows/build-template.yml
+    uses: ./.github/workflows/build-template.yaml
     with:
       image_tag_suffix: ${{ needs.setup.outputs.image_tag_suffix }}
       action: "push"
