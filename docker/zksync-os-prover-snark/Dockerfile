@@ -17,7 +17,7 @@ ARG CUDA_ARCH=89
 ENV CUDAARCHS=${CUDA_ARCH}
 
 RUN apt-get update && apt-get install -y curl clang openssl libssl-dev gcc g++ git \
-    pkg-config build-essential libclang-dev cmake && \
+    pkg-config build-essential libclang-dev cmake sccache && \
     rm -rf /var/lib/apt/lists/*
 
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -26,22 +26,19 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 
-# install sccache
-RUN curl -Lo sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz && \
-    tar -xzf sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz && \
-    cp sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/local/sbin/ && \
-    rm -rf sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz && \
-    rm -rf sccache-v0.8.1-x86_64-unknown-linux-musl && \
-    chmod +x /usr/local/sbin/sccache
-
 WORKDIR /usr/src/zksync
 COPY . .
+
+RUN curl -Lo /setup_compact.key https://storage.googleapis.com/matterlabs-setup-keys-europe/setup-keys/setup_compact.key
 
 RUN cargo build -p zksync_os_snark_prover --release
 
 ###############
 
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+
+# HACK copying to root is the only way to make Docker layer caching work for these files for some reason
+COPY --from=builder /setup_compact.key /setup_compact.key
 
 RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
 
