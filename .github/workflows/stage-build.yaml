@@ -1,0 +1,37 @@
+name: Stage build
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: [matterlabs-deployer-stage]
+    outputs:
+      image_tag_suffix: ${{ steps.generate-tag-suffix.outputs.image_tag_suffix }}
+      prover_fri_gpu_key_id: ${{ steps.extract-prover-fri-setup-key-ids.outputs.gpu_short_commit_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Generate image tag suffix
+        id: generate-tag-suffix
+        run: |
+          sha=$(git rev-parse --short HEAD)
+          ts=$(date +%s | cut -b1-13)
+          echo "image_tag_suffix=${sha}-${ts}" >> $GITHUB_OUTPUT
+
+  build-push-prover-images:
+    name: Build and push images
+    needs: [setup, changed_files]
+    uses: ./.github/workflows/build-template.yml
+    with:
+      image_tag_suffix: ${{ needs.setup.outputs.image_tag_suffix }}
+      action: "push"
+    secrets:
+      DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
