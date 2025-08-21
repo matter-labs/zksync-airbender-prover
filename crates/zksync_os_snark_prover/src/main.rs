@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
 // use proof_cache::client::ProofCacheClient;
-use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::BufReader;
@@ -8,9 +7,17 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
-use zksync_airbender_cli::prover_utils::{create_final_proofs_from_program_proof, create_proofs_internal, generate_oracle_data_from_metadata_and_proof_list, load_binary_from_path, program_proof_from_proof_list_and_metadata, proof_list_and_metadata_from_program_proof, GpuSharedState, VerifierCircuitsIdentifiers};
+use zksync_airbender_cli::prover_utils::{
+    create_final_proofs_from_program_proof, create_proofs_internal,
+    generate_oracle_data_from_metadata_and_proof_list, load_binary_from_path,
+    program_proof_from_proof_list_and_metadata, proof_list_and_metadata_from_program_proof,
+    GpuSharedState, VerifierCircuitsIdentifiers,
+};
 use zksync_airbender_cli::Machine;
-use zksync_airbender_execution_utils::{get_padded_binary, ProgramProof, UNIVERSAL_CIRCUIT_VERIFIER};
+use zksync_airbender_execution_utils::{
+    get_padded_binary, ProgramProof, UNIVERSAL_CIRCUIT_VERIFIER,
+};
+use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -54,14 +61,16 @@ enum Commands {
 }
 
 fn init_tracing() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
-    FmtSubscriber::builder()
-        .with_env_filter(filter)
-        .init();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
-fn generate_verification_key(binary_path: String, output_dir: String, trusted_setup_file: Option<String>, vk_verification_key_file: Option<String>) {
+fn generate_verification_key(
+    binary_path: String,
+    output_dir: String,
+    trusted_setup_file: Option<String>,
+    vk_verification_key_file: Option<String>,
+) {
     match zkos_wrapper::generate_vk(binary_path, output_dir, trusted_setup_file, true) {
         Ok(key) => {
             if let Some(vk_file) = vk_verification_key_file {
@@ -84,21 +93,26 @@ fn main() {
     match cli.command {
         Commands::GenerateKeys {
             setup:
-            SetupOptions {
-                binary_path,
-                output_dir,
-                trusted_setup_file,
-            },
+                SetupOptions {
+                    binary_path,
+                    output_dir,
+                    trusted_setup_file,
+                },
             vk_verification_key_file,
-        } => generate_verification_key(binary_path, output_dir, trusted_setup_file, vk_verification_key_file),
+        } => generate_verification_key(
+            binary_path,
+            output_dir,
+            trusted_setup_file,
+            vk_verification_key_file,
+        ),
         Commands::RunProver {
             sequencer_url,
             setup:
-            SetupOptions {
-                binary_path,
-                output_dir,
-                trusted_setup_file,
-            },
+                SetupOptions {
+                    binary_path,
+                    output_dir,
+                    trusted_setup_file,
+                },
             // mode,
         } => {
             // TODO: edit this comment
@@ -110,17 +124,23 @@ fn main() {
                 .enable_all()
                 .build()
                 .expect("failed to build tokio context");
-            runtime.block_on(run_linking_fri_snark(
-                sequencer_url,
-                binary_path,
-                output_dir,
-                trusted_setup_file,
-            )).expect("failed whilst running SNARK prover");
+            runtime
+                .block_on(run_linking_fri_snark(
+                    sequencer_url,
+                    binary_path,
+                    output_dir,
+                    trusted_setup_file,
+                ))
+                .expect("failed whilst running SNARK prover");
         }
     }
 }
 
-fn merge_fris(snark_proof_input: SnarkProofInputs, verifier_binary: &Vec<u32>, gpu_state: &mut GpuSharedState) -> ProgramProof {
+fn merge_fris(
+    snark_proof_input: SnarkProofInputs,
+    verifier_binary: &Vec<u32>,
+    gpu_state: &mut GpuSharedState,
+) -> ProgramProof {
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
         return snark_proof_input.fri_proofs[0].clone();
@@ -131,13 +151,20 @@ fn merge_fris(snark_proof_input: SnarkProofInputs, verifier_binary: &Vec<u32>, g
     for i in 1..snark_proof_input.fri_proofs.len() {
         let up_to_block = snark_proof_input.from_block_number.0 + i as u32 - 1;
         let curr_block = snark_proof_input.from_block_number.0 + i as u32;
-        tracing::info!("Linking proofs up to {} with proof for block {}", up_to_block, curr_block);
+        tracing::info!(
+            "Linking proofs up to {} with proof for block {}",
+            up_to_block,
+            curr_block
+        );
         let second_proof = snark_proof_input.fri_proofs[i].clone();
 
         let (first_metadata, first_proof_list) = proof_list_and_metadata_from_program_proof(proof);
-        let (second_metadata, second_proof_list) = proof_list_and_metadata_from_program_proof(second_proof);
-        let first_oracle = generate_oracle_data_from_metadata_and_proof_list(&first_metadata, &first_proof_list);
-        let second_oracle = generate_oracle_data_from_metadata_and_proof_list(&second_metadata, &second_proof_list);
+        let (second_metadata, second_proof_list) =
+            proof_list_and_metadata_from_program_proof(second_proof);
+        let first_oracle =
+            generate_oracle_data_from_metadata_and_proof_list(&first_metadata, &first_proof_list);
+        let second_oracle =
+            generate_oracle_data_from_metadata_and_proof_list(&second_metadata, &second_proof_list);
 
         let mut merged_input = vec![VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32];
         merged_input.extend(first_oracle);
@@ -156,7 +183,11 @@ fn merge_fris(snark_proof_input: SnarkProofInputs, verifier_binary: &Vec<u32>, g
         tracing::info!("Finished linking proofs up to block {}", up_to_block);
     }
     // TODO: We can do a recursion step here as well, IIUC
-    tracing::info!("Finishing linking all proofs from {} to {}", snark_proof_input.from_block_number, snark_proof_input.to_block_number);
+    tracing::info!(
+        "Finishing linking all proofs from {} to {}",
+        snark_proof_input.from_block_number,
+        snark_proof_input.to_block_number
+    );
     proof
 }
 
@@ -169,9 +200,7 @@ async fn run_linking_fri_snark(
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
     let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
 
-    tracing::info!(
-        "Starting zksync_os_snark_prover"
-    );
+    tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
     let mut gpu_state = GpuSharedState::new(&verifier_binary);
 
@@ -181,7 +210,8 @@ async fn run_linking_fri_snark(
         let snark_proof_input = match sequencer_client.pick_snark_job().await {
             Ok(Some(snark_proof_input)) => {
                 if snark_proof_input.fri_proofs.len() == 0 {
-                    let err_msg = "No FRI proofs were sent, issue with Prover API/Sequencer, quitting...";
+                    let err_msg =
+                        "No FRI proofs were sent, issue with Prover API/Sequencer, quitting...";
                     tracing::error!(err_msg);
                     return Err(anyhow::anyhow!(err_msg));
                 }
@@ -200,7 +230,11 @@ async fn run_linking_fri_snark(
         };
         let start_block = snark_proof_input.from_block_number;
         let end_block = snark_proof_input.to_block_number;
-        tracing::info!("Finished picking job, will aggregate from {} to {} inclusive", start_block, end_block);
+        tracing::info!(
+            "Finished picking job, will aggregate from {} to {} inclusive",
+            start_block,
+            end_block
+        );
 
         let proof = merge_fris(snark_proof_input, &verifier_binary, &mut gpu_state);
 
@@ -239,9 +273,16 @@ async fn run_linking_fri_snark(
                 .unwrap(),
         );
 
-        match sequencer_client.submit_snark_proof(start_block, end_block, snark_proof).await {
+        match sequencer_client
+            .submit_snark_proof(start_block, end_block, snark_proof)
+            .await
+        {
             Ok(()) => {
-                tracing::info!("Successfully submitted SNARK proof for blocks {} to {}", start_block, end_block);
+                tracing::info!(
+                    "Successfully submitted SNARK proof for blocks {} to {}",
+                    start_block,
+                    end_block
+                );
             }
             Err(e) => {
                 tracing::error!("Failed to submit SNARK job due to {e:?}, skipping");
