@@ -28,7 +28,7 @@ crypto_codegen = { package = "zksync_solidity_vk_codegen", version = "=0.32.1" }
 
 anyhow = "1.0"
 base64 = "0.22.1"
-bincode = "2"
+bincode = "1"
 clap = { version = "4.5.40", features = ["derive"] }
 reqwest = { version = "0.12.19", features = ["json"] }
 serde = { version = "1.0.219", features = ["derive"] }
