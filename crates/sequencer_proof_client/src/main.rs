@@ -32,7 +32,11 @@ impl Cli {
 
     /// Return sequencer client from CLI params. To be called only after `Cli::init()`.
     fn sequencer_client(&self) -> SequencerProofClient {
-        SequencerProofClient::new(self.url.clone().expect("called sequencer_client() before init()"))
+        SequencerProofClient::new(
+            self.url
+                .clone()
+                .expect("called sequencer_client() before init()"),
+        )
     }
 }
 
@@ -65,8 +69,7 @@ fn init_tracing(verbosity: u8) {
         1 => "debug",
         _ => "trace",
     };
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
     fmt::Subscriber::builder()
         .with_env_filter(env_filter)
         .init();
@@ -102,11 +105,21 @@ async fn main() -> Result<()> {
             //     }
             // }
         }
-        Commands::SubmitSnark { from_block_number, to_block_number, path } => {
+        Commands::SubmitSnark {
+            from_block_number,
+            to_block_number,
+            path,
+        } => {
             tracing::info!("Submitting SNARK proof for blocks [{from_block_number}, {to_block_number}] with proof from {path} to sequencer at {}", url);
             let file = std::fs::File::open(path)?;
             let snark_wrapper: SnarkWrapperProof = serde_json::from_reader(file)?;
-            client.submit_snark_proof(L2BlockNumber(from_block_number), L2BlockNumber(to_block_number), snark_wrapper).await?;
+            client
+                .submit_snark_proof(
+                    L2BlockNumber(from_block_number),
+                    L2BlockNumber(to_block_number),
+                    snark_wrapper,
+                )
+                .await?;
             tracing::info!("Submitted proof for blocks [{from_block_number}, {to_block_number}] to sequencer at {}", url);
         }
     }

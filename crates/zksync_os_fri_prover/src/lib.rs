@@ -3,6 +3,10 @@ use std::{
     time::SystemTime,
 };
 
+use anyhow::{anyhow, Result};
+use clap::Parser;
+use reqwest::{Client, StatusCode};
+use serde::{Deserialize, Serialize};
 use zksync_airbender_cli::{
     prover_utils::{
         create_proofs_internal, create_recursion_proofs, load_binary_from_path,
@@ -10,11 +14,7 @@ use zksync_airbender_cli::{
     },
     Machine,
 };
-use anyhow::{anyhow, Result};
-use clap::Parser;
 use zksync_airbender_execution_utils::ProgramProof;
-use reqwest::{Client, StatusCode};
-use serde::{Deserialize, Serialize};
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -153,9 +153,9 @@ pub async fn run(args: Args) {
     } else {
         ".".to_string()
     };
-    let binary_path = args.app_bin_path.unwrap_or_else(|| {
-            Path::new(&manifest_path).join("../../multiblock_batch.bin")
-    });
+    let binary_path = args
+        .app_bin_path
+        .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
     let mut gpu_state = GpuSharedState::new(&binary);
 
