@@ -40,7 +40,7 @@ impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
     fn try_into(self) -> Result<SnarkProofInputs, Self::Error> {
         let mut fri_proofs = vec![];
         for encoded_proof in self.fri_proofs {
-            let fri_proof = bincode::deserialize(&base64::decode(encoded_proof)?)?;
+            let (fri_proof, _) = bincode::serde::decode_from_slice(&base64::decode(encoded_proof)?, bincode::config::standard())?;
             fri_proofs.push(fri_proof);
         }
 

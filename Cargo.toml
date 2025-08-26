@@ -17,9 +17,7 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
-sequencer_proof_client = { path = "../sequencer_proof_client" }
-
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", revision = "01a64a174c9d1c42e3dd9cc1ffebfdb3ddd1e873" }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "01a64a174c9d1c42e3dd9cc1ffebfdb3ddd1e873" }
 zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.3.3" }
 zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.3.3" }
 bellman = { package = "zksync_bellman", version = "=0.32.1" }
@@ -28,7 +26,7 @@ crypto_codegen = { package = "zksync_solidity_vk_codegen", version = "=0.32.1" }
 
 anyhow = "1.0"
 base64 = "0.22.1"
-bincode = "1"
+bincode = {  version = "2", features = ["serde"] }
 clap = { version = "4.5.40", features = ["derive"] }
 reqwest = { version = "0.12.19", features = ["json"] }
 serde = { version = "1.0.219", features = ["derive"] }
