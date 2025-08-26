@@ -71,7 +71,7 @@ fn generate_verification_key(
     trusted_setup_file: Option<String>,
     vk_verification_key_file: Option<String>,
 ) {
-    match zkos_wrapper::generate_vk(binary_path, output_dir, trusted_setup_file, true) {
+    match zkos_wrapper::generate_vk(Some(binary_path), output_dir, trusted_setup_file, true) {
         Ok(key) => {
             if let Some(vk_file) = vk_verification_key_file {
                 std::fs::write(vk_file, format!("{:?}", key))
@@ -254,6 +254,7 @@ async fn run_linking_fri_snark(
             output_dir.clone(),
             trusted_setup_file.clone(),
             false,
+            None,
         ) {
             Ok(()) => {
                 tracing::info!(

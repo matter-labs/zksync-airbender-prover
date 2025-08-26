@@ -530,39 +530,9 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 
 [[package]]
 name = "boojum"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "362ea97026dfd07739f451438708ad2bd0bf812067c009592bcc50ac9758292c"
-dependencies = [
- "arrayvec 0.7.6",
- "bincode 1.3.3",
- "blake2 0.10.6",
- "const_format",
- "convert_case",
- "crossbeam",
- "crypto-bigint",
- "derivative",
- "ethereum-types",
- "firestorm",
- "itertools 0.10.5",
- "lazy_static",
- "num-modular",
- "num_cpus",
- "rand 0.8.5",
- "rayon",
- "serde",
- "sha2 0.10.8",
- "sha3_ce",
- "smallvec",
- "unroll",
- "zksync_cs_derive 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "zksync_pairing 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "boojum"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
+checksum = "9fe4105ada0a611347510a417c5af0bc1ec92b7f73128345b46b1c314c633146"
 dependencies = [
  "arrayvec 0.7.6",
  "bincode 1.3.3",
@@ -586,8 +556,23 @@ dependencies = [
  "smallvec",
  "tracing",
  "unroll",
- "zksync_cs_derive 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
- "zksync_pairing 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "zksync_cs_derive",
+ "zksync_pairing",
+]
+
+[[package]]
+name = "boojum-cuda"
+version = "0.154.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62e89e0cc40c9ee6b528660825a41c77297e999db78b3d2002652a69bc835381"
+dependencies = [
+ "boojum",
+ "cmake",
+ "era_cudart",
+ "era_cudart_sys",
+ "itertools 0.13.0",
+ "lazy_static",
+ "snark_wrapper",
 ]
 
 [[package]]
@@ -647,23 +632,23 @@ dependencies = [
 
 [[package]]
 name = "circuit_definitions"
-version = "0.152.2"
+version = "0.152.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5db77d1678727ef83b2ccd961dc6aba7d718453a7aef8707bb8d902267ab9204"
+checksum = "3306b9204707252f8d0edcfc79696688ccd8be2b525d5bda0732f540adc1b6ca"
 dependencies = [
  "circuit_encodings",
  "crossbeam",
  "derivative",
  "seq-macro",
  "serde",
- "snark_wrapper 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snark_wrapper",
 ]
 
 [[package]]
 name = "circuit_encodings"
-version = "0.152.2"
+version = "0.152.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b338ca54a279b1bf7c879295701569040cea638779efdfe93c1d9d7e2afba2b"
+checksum = "fe82380a47bf0880165136d260be9c398d5d35677b28434bbf1a9be4112c9dee"
 dependencies = [
  "derivative",
  "serde",
@@ -674,9 +659,9 @@ dependencies = [
 [[package]]
 name = "circuit_mersenne_field"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zkos-wrapper.git?rev=01a64a174c9d1c42e3dd9cc1ffebfdb3ddd1e873#01a64a174c9d1c42e3dd9cc1ffebfdb3ddd1e873"
+source = "git+https://github.com/matter-labs/zkos-wrapper.git?rev=v0.3.4#e637ec92902eefd9712ef808b716d586130c7773"
 dependencies = [
- "boojum 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "boojum",
  "field",
  "rand 0.8.5",
 ]
@@ -1146,9 +1131,9 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "era_cudart"
-version = "0.154.6"
+version = "0.154.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18f776136fc403da7d38c8186d1c9e484fa215ab2c73dd4f7d71e1d5c6640e17"
+checksum = "55a25d47ed055617fc262ec99a0e30d33d96ac63d626032b9b40bf570717a4e7"
 dependencies = [
  "bitflags",
  "era_cudart_sys",
@@ -1157,9 +1142,9 @@ dependencies = [
 
 [[package]]
 name = "era_cudart_sys"
-version = "0.154.6"
+version = "0.154.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d70f343470620e9c9030c4b0b38088fb74a0e286f5893e21d700ae72ab3761d"
+checksum = "aadbbcacf0d511c1b39fb0f56cf18ab71933df40475f0fa71e8f11ce7de00abd"
 dependencies = [
  "regex-lite",
 ]
@@ -1255,6 +1240,41 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "fflonk"
+version = "0.32.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8956f1c31c9b3f6f00cbed66d6ce056484aa56fea99b8ba3ae1a3a112955875"
+dependencies = [
+ "bincode 1.3.3",
+ "byteorder",
+ "franklin-crypto",
+ "num-bigint 0.4.6",
+ "num-traits",
+ "rand 0.4.6",
+ "serde",
+ "serde_derive",
+ "serde_json",
+]
+
+[[package]]
+name = "fflonk-cuda"
+version = "0.154.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13b260b629b05097dce840aa157619498d30129e37ff0bf419bda15fd2b3c963"
+dependencies = [
+ "bincode 1.3.3",
+ "byteorder",
+ "circuit_definitions",
+ "derivative",
+ "fflonk",
+ "rand 0.4.6",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "zksync-gpu-ffi",
 ]
 
 [[package]]
@@ -1363,16 +1383,16 @@ dependencies = [
 
 [[package]]
 name = "franklin-crypto"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb8609d52029149287245dec1b2840b21883943cfbd84eece77e05f531206ff5"
+checksum = "476cf37933eebcc3c056b3c3610740a9ba6b678e65f6a9d95a5fb0c00b59b9e9"
 dependencies = [
  "arr_macro",
  "bit-vec 0.6.3",
  "blake2 0.9.2",
  "blake2-rfc_bellman_edition",
  "blake2s_simd",
- "boojum 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "boojum",
  "byteorder",
  "derivative",
  "digest 0.9.0",
@@ -1391,39 +1411,7 @@ dependencies = [
  "smallvec",
  "splitmut",
  "tiny-keccak 1.5.0",
- "zksync_bellman 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "franklin-crypto"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
-dependencies = [
- "arr_macro",
- "bit-vec 0.6.3",
- "blake2 0.9.2",
- "blake2-rfc_bellman_edition",
- "blake2s_simd",
- "boojum 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
- "byteorder",
- "derivative",
- "digest 0.9.0",
- "hex",
- "indexmap 1.9.3",
- "itertools 0.10.5",
- "lazy_static",
- "num-bigint 0.4.6",
- "num-derive",
- "num-integer",
- "num-traits",
- "rand 0.4.6",
- "serde",
- "sha2 0.9.9",
- "sha3 0.9.1",
- "smallvec",
- "splitmut",
- "tiny-keccak 1.5.0",
- "zksync_bellman 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "zksync_bellman",
 ]
 
 [[package]]
@@ -1488,6 +1476,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e5c1b78ca4aae1ac06c48a526a655760685149f0d465d21f37abfe57ce075c6"
 
 [[package]]
+name = "futures-locks"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45ec6fe3675af967e67c5536c0b9d44e34e6c52f86bedc4ea49c5317b8e94d06"
+dependencies = [
+ "futures-channel",
+ "futures-task",
+ "tokio",
+]
+
+[[package]]
+name = "futures-macro"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "162ee34ebcb7c64a8abebc059ce0fee27c2262618d7b60ed8faf72fef13c3650"
+dependencies = [
+ "proc-macro2 1.0.97",
+ "quote 1.0.40",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "futures-sink"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1508,6 +1518,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-io",
+ "futures-macro",
  "futures-sink",
  "futures-task",
  "memchr",
@@ -2030,6 +2041,15 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -2818,6 +2838,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "proof-compression"
+version = "0.154.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfaddfdf7b40ae92973afa8aa8c4742b9e455306149fd8ffdfbdf1bcf59ae09b"
+dependencies = [
+ "anyhow",
+ "bincode 1.3.3",
+ "byteorder",
+ "cfg-if",
+ "circuit_definitions",
+ "fflonk-cuda",
+ "serde",
+ "serde_json",
+ "shivini",
+ "zksync-gpu-prover",
+]
+
+[[package]]
 name = "proptest"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3166,40 +3204,16 @@ dependencies = [
 
 [[package]]
 name = "rescue_poseidon"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5882e5f163b5ad2b4207684dbdddb0c2e79adb5ff0e0a26ff9caec5cf758d7d"
+checksum = "0032270a03336217b4de045e66eaca4b6cedef0fdc467c8ac3227d4c7f55c526"
 dependencies = [
  "addchain",
  "arrayvec 0.7.6",
  "blake2 0.10.6",
  "byteorder",
  "derivative",
- "franklin-crypto 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static",
- "log",
- "num-bigint 0.3.3",
- "num-integer",
- "num-iter",
- "num-traits",
- "rand 0.4.6",
- "serde",
- "sha3 0.9.1",
- "smallvec",
- "typemap_rev",
-]
-
-[[package]]
-name = "rescue_poseidon"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
-dependencies = [
- "addchain",
- "arrayvec 0.7.6",
- "blake2 0.10.6",
- "byteorder",
- "derivative",
- "franklin-crypto 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "franklin-crypto",
  "lazy_static",
  "log",
  "num-bigint 0.3.3",
@@ -3674,6 +3688,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "shivini"
+version = "0.154.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3615ac1c669d8aac5ba528661b363713feb9d5d1291ffa84f6b7221509497830"
+dependencies = [
+ "bincode 1.3.3",
+ "boojum",
+ "boojum-cuda",
+ "circuit_definitions",
+ "derivative",
+ "era_cudart",
+ "era_cudart_sys",
+ "hex",
+ "itertools 0.13.0",
+ "rand 0.8.5",
+ "serde",
+ "smallvec",
+]
+
+[[package]]
 name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3717,24 +3751,13 @@ dependencies = [
 
 [[package]]
 name = "snark_wrapper"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0b48868dbee820298ccbb4eadb96cd8030697bae43695d9d3ff6f2c1a157b52"
+checksum = "3dff0b5aa3276336a1002f4764edab30efe7968ddbac763067e6281de880dde8"
 dependencies = [
  "derivative",
  "rand 0.4.6",
- "rescue_poseidon 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde",
-]
-
-[[package]]
-name = "snark_wrapper"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
-dependencies = [
- "derivative",
- "rand 0.4.6",
- "rescue_poseidon 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "rescue_poseidon",
  "serde",
 ]
 
@@ -4869,9 +4892,9 @@ dependencies = [
 
 [[package]]
 name = "zk_evm"
-version = "0.152.2"
+version = "0.152.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3fcee1c29243b857b374c1b23023af81453180447b7d07af6a92f43c1a3433a"
+checksum = "86b41c494e018b4410f8e71199cf95b5984cb888866215e088c9ce3034114a2a"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -4884,9 +4907,9 @@ dependencies = [
 
 [[package]]
 name = "zk_evm_abstractions"
-version = "0.152.2"
+version = "0.152.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5045537f21a73dc99f709daa951e89b857c1b00584d0d8395e8fe6d3b1bedeb5"
+checksum = "d1f6a3894b9ff54996f0ddd9174a6555e3769475ef349b8e77dead79611a54b5"
 dependencies = [
  "anyhow",
  "num_enum",
@@ -4897,12 +4920,12 @@ dependencies = [
 
 [[package]]
 name = "zkevm_circuits"
-version = "0.152.2"
+version = "0.152.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f93429a4c080ea184b15df8ec94c6ee7c9eba518a26821b6c76ed409f6ab39d2"
+checksum = "dd5b07f295fc1591f2567d5f6c078c5dbb73e43b38997037d69f0d74f7b1c7fa"
 dependencies = [
  "arrayvec 0.7.6",
- "boojum 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "boojum",
  "derivative",
  "hex",
  "itertools 0.10.5",
@@ -4914,14 +4937,14 @@ dependencies = [
  "serde_json",
  "smallvec",
  "zkevm_opcode_defs",
- "zksync_cs_derive 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zksync_cs_derive",
 ]
 
 [[package]]
 name = "zkevm_opcode_defs"
-version = "0.152.2"
+version = "0.152.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "117d135367b66f3c4dab8717113eb3898d514e8c3886ac3d4367919ae3f2824d"
+checksum = "b10a50268753cf4b00234cbad2d87b2f242fd8e6d1e0b7589a2801e81f502697"
 dependencies = [
  "bitflags",
  "blake2 0.10.6",
@@ -4932,33 +4955,68 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "sha3 0.10.8",
- "zksync_pairing 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zksync_pairing",
 ]
 
 [[package]]
 name = "zkos-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zkos-wrapper.git?rev=01a64a174c9d1c42e3dd9cc1ffebfdb3ddd1e873#01a64a174c9d1c42e3dd9cc1ffebfdb3ddd1e873"
+source = "git+https://github.com/matter-labs/zkos-wrapper.git?rev=v0.3.4#e637ec92902eefd9712ef808b716d586130c7773"
 dependencies = [
- "boojum 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "boojum",
  "circuit_mersenne_field",
  "clap",
  "execution_utils",
  "final_reduced_risc_v_machine_verifier",
- "rescue_poseidon 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "proof-compression",
+ "rescue_poseidon",
  "serde",
  "serde_json",
  "setups",
- "sha3 0.9.1",
- "snark_wrapper 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
- "zksync_bellman 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "sha3 0.10.8",
+ "shivini",
+ "snark_wrapper",
+ "zksync-gpu-prover",
+ "zksync_bellman",
+]
+
+[[package]]
+name = "zksync-gpu-ffi"
+version = "0.154.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4062b1a820af76de25a74cb7a43815d94a31b10595495765699dccb6efa95e36"
+dependencies = [
+ "cmake",
+ "crossbeam",
+ "derivative",
+ "era_cudart_sys",
+ "futures",
+ "futures-locks",
+ "num_cpus",
+]
+
+[[package]]
+name = "zksync-gpu-prover"
+version = "0.154.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "476e722b8438b195d88c80958a09754303d84e45e00e94252602fa0a2d508fdf"
+dependencies = [
+ "bit-vec 0.6.3",
+ "cfg-if",
+ "crossbeam",
+ "franklin-crypto",
+ "itertools 0.10.5",
+ "num_cpus",
+ "rand 0.4.6",
+ "serde",
+ "zksync-gpu-ffi",
 ]
 
 [[package]]
 name = "zksync_bellman"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dda34f04d6e840723172101e0961a85da204ea0ceef0190fdd394975853b08f"
+checksum = "1bf61df8ac1322cc9569a90ed8c62cc03e5cb2b2b329ed7e36c9623a752c128e"
 dependencies = [
  "arrayvec 0.7.6",
  "bit-vec 0.6.3",
@@ -4974,47 +5032,14 @@ dependencies = [
  "serde",
  "smallvec",
  "tiny-keccak 1.5.0",
- "zksync_pairing 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "zksync_bellman"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
-dependencies = [
- "arrayvec 0.7.6",
- "bit-vec 0.6.3",
- "blake2s_simd",
- "byteorder",
- "cfg-if",
- "crossbeam",
- "futures",
- "hex",
- "lazy_static",
- "num_cpus",
- "rand 0.4.6",
- "serde",
- "smallvec",
- "tiny-keccak 1.5.0",
- "zksync_pairing 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "zksync_pairing",
 ]
 
 [[package]]
 name = "zksync_cs_derive"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cba4ebb398f1ba780690d07a8d0368177261d059e63f0c3746e2e82855588892"
-dependencies = [
- "proc-macro-error",
- "proc-macro2 1.0.97",
- "quote 1.0.40",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "zksync_cs_derive"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
+checksum = "056abe43dc4a10ba757d5bf43ab7e6ec1ff9634225ed6ec75c5e3928fadec58d"
 dependencies = [
  "proc-macro-error",
  "proc-macro2 1.0.97",
@@ -5024,48 +5049,22 @@ dependencies = [
 
 [[package]]
 name = "zksync_ff"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eebf1eedfc02d875f9553f88d96cd44945fa2978bc380498328f4bdc3961d09c"
+checksum = "d85a545b830182e58ba217c119dabe41fa2756c4192b99d552e6fa049f3ef366"
 dependencies = [
  "byteorder",
  "hex",
  "rand 0.4.6",
  "serde",
- "zksync_ff_derive 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "zksync_ff"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
-dependencies = [
- "byteorder",
- "hex",
- "rand 0.4.6",
- "serde",
- "zksync_ff_derive 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "zksync_ff_derive",
 ]
 
 [[package]]
 name = "zksync_ff_derive"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "894d4fd05cde3567a547d5c31505511f79862edd7c9b0c5addfd0533724803dd"
-dependencies = [
- "num-bigint 0.4.6",
- "num-integer",
- "num-traits",
- "proc-macro2 1.0.97",
- "quote 1.0.40",
- "serde",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "zksync_ff_derive"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
+checksum = "28f98f98cf79d0512600a3eecca73a1ba5e0e9c6a399f5b010d7b041567a4b10"
 dependencies = [
  "num-bigint 0.4.6",
  "num-integer",
@@ -5111,27 +5110,15 @@ dependencies = [
 
 [[package]]
 name = "zksync_pairing"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3895f40044daf50998b531bd5053181a245eff58ddfdf5b3bc7055c0e77c1411"
+checksum = "fb12d532d4f3399c2ced6b670481c426d15a93a0f7c4e899ad21670f7980a39f"
 dependencies = [
  "byteorder",
  "cfg-if",
  "rand 0.4.6",
  "serde",
- "zksync_ff 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "zksync_pairing"
-version = "0.32.1"
-source = "git+https://github.com/matter-labs/zksync-crypto.git?branch=main#949f38ac03bd2bc27e39961c08f6fe4996855f4b"
-dependencies = [
- "byteorder",
- "cfg-if",
- "rand 0.4.6",
- "serde",
- "zksync_ff 0.32.1 (git+https://github.com/matter-labs/zksync-crypto.git?branch=main)",
+ "zksync_ff",
 ]
 
 [[package]]
@@ -5151,22 +5138,22 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zkos-wrapper",
- "zksync_bellman 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "zksync_bellman",
  "zksync_solidity_vk_codegen",
 ]
 
 [[package]]
 name = "zksync_solidity_vk_codegen"
-version = "0.32.1"
+version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc67a96bb5d6a9a48d9b08be9b84757238bdcca479f7fe1ccdfe3e434eb4fe62"
+checksum = "fccb3e8f6cedd6e5f3dd4716be79fd1ed59a064c726ec3ac890199f132f608a5"
 dependencies = [
  "ethereum-types",
- "franklin-crypto 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "franklin-crypto",
  "handlebars",
  "hex",
  "paste",
- "rescue_poseidon 0.32.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rescue_poseidon",
  "serde",
  "serde_derive",
  "serde_json",
