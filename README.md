@@ -1,9 +1,9 @@
-# zksync-airbender-prover
-Prover Service implementation for ZKsync Airbender (zksync-os)
+# ZKsync OS: Airbender Prover
+This repo contains the Prover Service implementation for ZKsync OS Airbender prover.
 
 ## Overview
 
-Repo contains 3 crates:
+This repo contains 3 crates:
 - sequencer_proof_client
 - zksync_os_fri_prover
 - zksync_os_snark_prover
@@ -42,6 +42,27 @@ cargo run --release --features gpu --bin zksync_os_snark_prover -- --sequencer-u
 cargo run --release --bin sequencer_proof_client -- submit-snark --from-block-number 1 --to-block-number 10 --path ./outputs/snark_proof.json --url http://localhost:3124
 ```
 
-## Development
+## Policies
 
-Currently in WIP mode, expect changes.
+- [Security policy](SECURITY.md)
+- [Contribution policy](CONTRIBUTING.md)
+
+## License
+
+ZKsync OS repositories are distributed under the terms of either
+
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/blog/license/mit/>)
+
+at your option.
+
+## Official Links
+
+- [Website](https://zksync.io/)
+- [GitHub](https://github.com/matter-labs)
+- [ZK Credo](https://github.com/zksync/credo)
+- [Twitter](https://twitter.com/zksync)
+- [Twitter for Developers](https://twitter.com/zkSyncDevs)
+- [Discord](https://join.zksync.dev/)
+- [Mirror](https://zksync.mirror.xyz/)
+- [Youtube](https://www.youtube.com/@zkSync-era)
