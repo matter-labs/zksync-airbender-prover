@@ -1,6 +1,5 @@
 name: Rust CI
 
-# Controls when the workflow will run
 on:
   push:
     branches: [ "main" ]
@@ -11,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
 
     steps:
