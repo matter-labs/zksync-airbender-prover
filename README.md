@@ -26,7 +26,7 @@ SNARKs the final proof. Gets a set of continuous FRIs from sequencer, merges the
 ### Usage
 
 
-Before starting, make sure that you **sequencer** has fake proofs disabled:
+Before starting, make sure that your **sequencer** has fake proofs disabled:
 
 ```
 prover_api_fake_fri_provers_enabled=false prover_api_fake_snark_provers_enabled=false
