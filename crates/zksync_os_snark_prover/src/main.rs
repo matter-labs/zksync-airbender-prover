@@ -1,17 +1,13 @@
-use clap::{Parser, Subcommand, ValueEnum};
-// use proof_cache::client::ProofCacheClient;
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal,
-    generate_oracle_data_from_metadata_and_proof_list, load_binary_from_path,
-    program_proof_from_proof_list_and_metadata, proof_list_and_metadata_from_program_proof,
-    GpuSharedState, VerifierCircuitsIdentifiers,
+    generate_oracle_data_from_metadata_and_proof_list, program_proof_from_proof_list_and_metadata,
+    proof_list_and_metadata_from_program_proof, GpuSharedState, VerifierCircuitsIdentifiers,
 };
 use zksync_airbender_cli::Machine;
 use zksync_airbender_execution_utils::{
@@ -74,7 +70,7 @@ fn generate_verification_key(
     match zkos_wrapper::generate_vk(binary_path, output_dir, trusted_setup_file, true) {
         Ok(key) => {
             if let Some(vk_file) = vk_verification_key_file {
-                std::fs::write(vk_file, format!("{:?}", key))
+                std::fs::write(vk_file, format!("{key:?}"))
                     .expect("Failed to write verification key to file");
             } else {
                 tracing::info!("Verification key generated successfully: {:#?}", key);
@@ -171,7 +167,7 @@ fn merge_fris(
         merged_input.extend(second_oracle);
 
         let (current_proof_list, proof_metadata) = create_proofs_internal(
-            &verifier_binary,
+            verifier_binary,
             merged_input,
             &Machine::Reduced,
             100, // Guessing - FIXME!!
@@ -209,7 +205,7 @@ async fn run_linking_fri_snark(
         tracing::info!("Started picking job");
         let snark_proof_input = match sequencer_client.pick_snark_job().await {
             Ok(Some(snark_proof_input)) => {
-                if snark_proof_input.fri_proofs.len() == 0 {
+                if snark_proof_input.fri_proofs.is_empty() {
                     let err_msg =
                         "No FRI proofs were sent, issue with Prover API/Sequencer, quitting...";
                     tracing::error!(err_msg);
