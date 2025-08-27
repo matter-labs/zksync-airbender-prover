@@ -4,6 +4,8 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+
 use clap::Parser;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -70,7 +72,8 @@ impl ProofDataClient {
         match resp.status() {
             StatusCode::OK => {
                 let body: NextProverJobPayload = resp.json().await?;
-                let data = base64::decode(&body.prover_input)
+                let data = STANDARD
+                    .decode(&body.prover_input)
                     .map_err(|e| anyhow!("Failed to decode block data: {}", e))?;
                 Ok(Some((body.block_number, data)))
             }
@@ -104,7 +107,7 @@ impl ProofDataClient {
 fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,
-    gpu_state: &mut GpuSharedState,
+    _gpu_state: &mut GpuSharedState,
 ) -> ProgramProof {
     let mut timing = Some(0f64);
     let (proof_list, proof_metadata) = create_proofs_internal(
@@ -115,17 +118,11 @@ fn create_proof(
         1000,
         None,
         #[cfg(feature = "gpu")]
-        &mut Some(gpu_state),
+        &mut Some(_gpu_state),
         #[cfg(not(feature = "gpu"))]
         &mut None,
         &mut timing, // timing info
     );
-    let basic_proofs = proof_list.basic_proofs.len();
-    let delegation_proofs = proof_list
-        .delegation_proofs
-        .iter()
-        .map(|x| x.1.len())
-        .collect::<Vec<_>>();
     let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
         proof_list,
         proof_metadata,
@@ -164,7 +161,7 @@ pub async fn run(args: Args) {
     loop {
         let (block_number, prover_input) = match client.pick_next_prover_job().await {
             Err(err) => {
-                eprintln!("Error fetching next prover job: {}", err);
+                eprintln!("Error fetching next prover job: {err}");
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 continue;
             }
@@ -195,10 +192,11 @@ pub async fn run(args: Args) {
             block_number
         );
         let proof_bytes: Vec<u8> =
-            bincode::serde::encode_to_vec(&proof, bincode::config::standard()).expect("failed to bincode-serialize proof");
+            bincode::serde::encode_to_vec(&proof, bincode::config::standard())
+                .expect("failed to bincode-serialize proof");
 
         // 2) base64-encode that binary blob
-        let proof_b64 = base64::encode(&proof_bytes);
+        let proof_b64 = STANDARD.encode(&proof_bytes);
 
         match client.submit_proof(block_number, proof_b64).await {
             Ok(_) => println!(

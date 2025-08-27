@@ -1,8 +1,7 @@
 // TODO: Add testing around this
 
 use anyhow::{anyhow, Context};
-use base64::engine::general_purpose;
-use base64::Engine;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
 use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
 use reqwest::StatusCode;
@@ -40,7 +39,10 @@ impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
     fn try_into(self) -> Result<SnarkProofInputs, Self::Error> {
         let mut fri_proofs = vec![];
         for encoded_proof in self.fri_proofs {
-            let (fri_proof, _) = bincode::serde::decode_from_slice(&base64::decode(encoded_proof)?, bincode::config::standard())?;
+            let (fri_proof, _) = bincode::serde::decode_from_slice(
+                &STANDARD.decode(encoded_proof)?,
+                bincode::config::standard(),
+            )?;
             fri_proofs.push(fri_proof);
         }
 
@@ -137,14 +139,13 @@ impl SequencerProofClient {
 
         let byte_serialized_proof = serialized_proof
             .iter()
-            .map(|chunk| {
+            .flat_map(|chunk| {
                 let mut buf = [0u8; 32];
                 chunk.to_big_endian(&mut buf);
                 buf
             })
-            .flatten()
             .collect::<Vec<u8>>();
 
-        Ok(general_purpose::STANDARD.encode(byte_serialized_proof))
+        Ok(STANDARD.encode(byte_serialized_proof))
     }
 }

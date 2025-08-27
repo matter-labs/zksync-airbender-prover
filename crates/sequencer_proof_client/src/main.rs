@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use std::path::Path;
-use zkos_wrapper::{serialize_to_file, SnarkWrapperProof};
+use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{L2BlockNumber, SequencerProofClient};
 
 #[derive(Parser)]

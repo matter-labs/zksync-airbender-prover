@@ -1,0 +1,52 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  general-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodule: "recursive"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly-2025-05-20
+          components: clippy, rustfmt
+
+      - name: Setup cache dependencies
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      # no-default-features is set because the code is a mix of GPU/non-GPU compliant code
+      # the flag needs to be removed once we allow both version to be build and control it via env var
+      # these changes will be removed once https://github.com/matter-labs/prover-subsystem-internal/issues/49 is done
+      - name: Run Clippy
+        run: cargo clippy --no-default-features -- -D warnings
+
+      - name: Build
+        run: cargo build --verbose --release --no-default-features
+
+      - name: Run tests
+        run: cargo test --verbose --no-default-features
