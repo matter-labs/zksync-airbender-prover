@@ -25,17 +25,32 @@ SNARKs the final proof. Gets a set of continuous FRIs from sequencer, merges the
 
 ### Usage
 
-Sample usage for commands
+
+Before starting, make sure that you **sequencer** has fake proofs disabled:
+
+```
+prover_api_fake_fri_provers_enabled=false prover_api_fake_snark_provers_enabled=false
+```
+
+
+Sample usage for commands.
+
+**This command currently requires a GPU (at least 24GB of VRAM)**
 
 ```bash
 # start FRI prover
 cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin
 ```
 
+
+**This command currently requires around 128 GB of RAM - and no GPU**
+
 ```bash
 # start SNARK prover
-cargo run --release --features gpu --bin zksync_os_snark_prover -- --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --output-dir ./outputs
+cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --output-dir ./outputs
 ```
+
+This one is only needed if you want to manually upload.
 
 ```bash
 # submit a SNARK proof manually to sequencer
