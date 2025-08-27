@@ -43,7 +43,7 @@ cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http
 ```
 
 
-**This command currently requires around 128 GB of RAM - and no GPU**
+**This command currently requires around 140 GB of RAM - and GPU**
 
 ```bash
 # start SNARK prover
