@@ -22,9 +22,9 @@ categories = ["cryptography"]
 
 zkos_wrapper = { path = "../zkos-wrapper/wrapper", package = "zkos-wrapper" }
 
-# 0.4.1 + Anton's fix
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender.git", rev = "ff0821df8b0e2a7003828209478cc4e8fe682d81" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender.git", rev = "ff0821df8b0e2a7003828209478cc4e8fe682d81" }
+
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.4.2" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.4.2" }
 
 
 bellman = { package = "zksync_bellman", version = "=0.32.2" }
