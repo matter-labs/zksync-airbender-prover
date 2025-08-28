@@ -6,7 +6,7 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
-    MainCircuitType, RecursionStrategy,
+    RecursionStrategy,
 };
 use zksync_airbender_cli::Machine;
 use zksync_airbender_execution_utils::{
@@ -196,7 +196,13 @@ async fn run_linking_fri_snark(
 
     tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-    let mut gpu_state = GpuSharedState::new(&verifier_binary, MainCircuitType::ReducedRiscVMachine);
+    #[cfg(feature = "gpu")]
+    let mut gpu_state = GpuSharedState::new(
+        &verifier_binary,
+        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+    );
+    #[cfg(not(feature = "gpu"))]
+    let mut gpu_state = GpuSharedState::new(&verifier_binary);
 
     loop {
         let proof_time = Instant::now();

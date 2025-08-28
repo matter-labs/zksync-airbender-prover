@@ -33,4 +33,5 @@ tracing-subscriber.workspace = true
 clap.workspace = true
 
 [features]
-default = ["zksync_airbender_cli/gpu"]
+gpu = ["zksync_airbender_cli/gpu"]
+default = ["gpu"]
