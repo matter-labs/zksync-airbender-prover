@@ -142,7 +142,7 @@ pub async fn run(args: Args) {
         // 2) base64-encode that binary blob
         let proof_b64 = STANDARD.encode(&proof_bytes);
 
-        let path = format!("./fri_proof.json");
+        let path = "./fri_proof.json".to_string();
         serialize_to_file(&proof_b64, Path::new(&path));
 
         match client.submit_fri_proof(block_number, proof_b64).await {
