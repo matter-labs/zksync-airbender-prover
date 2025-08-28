@@ -66,7 +66,7 @@ fn main() {
             sequencer_url,
             setup:
                 SetupOptions {
-                    binary_path,
+                    binary_path: _,
                     output_dir,
                     trusted_setup_file,
                 },
@@ -84,7 +84,6 @@ fn main() {
             runtime
                 .block_on(run_linking_fri_snark(
                     sequencer_url,
-                    binary_path,
                     output_dir,
                     trusted_setup_file,
                 ))

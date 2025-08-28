@@ -1,20 +1,17 @@
-
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
-    create_final_proofs_from_program_proof, create_proofs_internal,
-    generate_oracle_data_from_metadata_and_proof_list,
-    program_proof_from_proof_list_and_metadata, proof_list_and_metadata_from_program_proof,
-    GpuSharedState, VerifierCircuitsIdentifiers,
+    create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
+    RecursionStrategy,
 };
 use zksync_airbender_cli::Machine;
 use zksync_airbender_execution_utils::{
-    get_padded_binary, ProgramProof, UNIVERSAL_CIRCUIT_VERIFIER,
+    generate_oracle_data_from_metadata_and_proof_list, get_padded_binary, ProgramProof,
+    VerifierCircuitsIdentifiers, UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
-
 
 pub fn init_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -27,7 +24,7 @@ pub fn generate_verification_key(
     trusted_setup_file: Option<String>,
     vk_verification_key_file: Option<String>,
 ) {
-    match zkos_wrapper::generate_vk(binary_path, output_dir, trusted_setup_file, true) {
+    match zkos_wrapper::generate_vk(Some(binary_path), output_dir, trusted_setup_file, true) {
         Ok(key) => {
             if let Some(vk_file) = vk_verification_key_file {
                 std::fs::write(vk_file, format!("{key:?}"))
@@ -64,9 +61,9 @@ pub fn merge_fris(
         );
         let second_proof = snark_proof_input.fri_proofs[i].clone();
 
-        let (first_metadata, first_proof_list) = proof_list_and_metadata_from_program_proof(proof);
-        let (second_metadata, second_proof_list) =
-            proof_list_and_metadata_from_program_proof(second_proof);
+        let (first_metadata, first_proof_list) = proof.to_metadata_and_proof_list();
+        let (second_metadata, second_proof_list) = second_proof.to_metadata_and_proof_list();
+
         let first_oracle =
             generate_oracle_data_from_metadata_and_proof_list(&first_metadata, &first_proof_list);
         let second_oracle =
@@ -85,7 +82,7 @@ pub fn merge_fris(
             &mut Some(gpu_state),
             &mut Some(0f64),
         );
-        proof = program_proof_from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
+        proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
         tracing::info!("Finished linking proofs up to block {}", up_to_block);
     }
     // TODO: We can do a recursion step here as well, IIUC
@@ -99,7 +96,6 @@ pub fn merge_fris(
 
 pub async fn run_linking_fri_snark(
     sequencer_url: Option<String>,
-    binary_path: String,
     output_dir: String,
     trusted_setup_file: Option<String>,
 ) -> anyhow::Result<()> {
@@ -108,6 +104,12 @@ pub async fn run_linking_fri_snark(
 
     tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+    #[cfg(feature = "gpu")]
+    let mut gpu_state = GpuSharedState::new(
+        &verifier_binary,
+        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+    );
+    #[cfg(not(feature = "gpu"))]
     let mut gpu_state = GpuSharedState::new(&verifier_binary);
 
     loop {
@@ -145,7 +147,16 @@ pub async fn run_linking_fri_snark(
         let proof = merge_fris(snark_proof_input, &verifier_binary, &mut gpu_state);
 
         tracing::info!("Creating final proof before SNARKification");
-        let final_proof = create_final_proofs_from_program_proof(proof);
+        let final_proof = create_final_proofs_from_program_proof(
+            proof,
+            RecursionStrategy::UseReducedLog23Machine,
+            // TODO: currently disabling GPU on final proofs, but we should have a switch in the main program
+            // that allow people to run in 3 modes:
+            // - cpu only
+            // - small gpu (then this is false)
+            // - gpu (a.k.a large gpu) - then this is true.
+            false,
+        );
 
         tracing::info!("Finished creating final proof");
         let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
@@ -156,10 +167,11 @@ pub async fn run_linking_fri_snark(
         let snark_time = Instant::now();
         match prove(
             one_fri_path.into_os_string().into_string().unwrap(),
-            Some(binary_path.clone()),
             output_dir.clone(),
             trusted_setup_file.clone(),
             false,
+            // TODO: for GPU, we might want to create 'setup' file, and then pass it here for faster running.
+            None,
         ) {
             Ok(()) => {
                 tracing::info!(

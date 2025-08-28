@@ -8,7 +8,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use clap::Parser;
 use zksync_airbender_cli::{
     prover_utils::{
-        create_proofs_internal, create_recursion_proofs, load_binary_from_path, program_proof_from_proof_list_and_metadata, serialize_to_file, GpuSharedState
+        create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
+        GpuSharedState, RecursionStrategy,
     },
     Machine,
 };
@@ -57,6 +58,8 @@ fn create_proof(
     let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
         proof_list,
         proof_metadata,
+        // This is the default strategy (where recursion is done on reduced machine, and final step on 23 machine).
+        RecursionStrategy::UseReducedLog23Machine,
         &None,
         #[cfg(feature = "gpu")]
         &mut Some(_gpu_state),
@@ -65,7 +68,7 @@ fn create_proof(
         &mut timing, // timing info
     );
 
-    program_proof_from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
+    ProgramProof::from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
 }
 
 pub async fn run(args: Args) {
@@ -85,9 +88,22 @@ pub async fn run(args: Args) {
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
-    let mut gpu_state = GpuSharedState::new(&binary);
+    // For regular fri proving, we keep using reduced RiscV machine.
+    #[cfg(feature = "gpu")]
+    let mut gpu_state = GpuSharedState::new(
+        &binary,
+        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+    );
+    #[cfg(not(feature = "gpu"))]
+    let mut gpu_state = GpuSharedState::new(
+        &binary,
+        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+    );
 
-    println!("Starting Zksync OS FRI prover for {}", client.sequencer_url());
+    println!(
+        "Starting Zksync OS FRI prover for {}",
+        client.sequencer_url()
+    );
 
     loop {
         let (block_number, prover_input) = match client.pick_fri_job().await {

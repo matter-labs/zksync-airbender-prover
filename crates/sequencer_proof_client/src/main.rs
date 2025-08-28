@@ -3,10 +3,8 @@ use std::path::Path;
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use zkos_wrapper::SnarkWrapperProof;
+use zksync_airbender_cli::prover_utils::serialize_to_file;
 use zksync_sequencer_proof_client::{L2BlockNumber, SequencerProofClient};
-use zksync_airbender_cli::{
-    prover_utils::serialize_to_file,
-};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -58,13 +56,23 @@ enum Commands {
         #[arg(short, long, value_name = "BLOCK_NUMBER")]
         block_number: u32,
         /// Path to the FRI proof file to submit
-        #[arg(short, long, value_name = "FRI_PATH", default_value = "./fri_proof.json")]
+        #[arg(
+            short,
+            long,
+            value_name = "FRI_PATH",
+            default_value = "./fri_proof.json"
+        )]
         path: String,
     },
     /// Picks the next SNARK proof job from the sequencer; sequencer marks job as picked (and will not give it to other clients, until the job expires)
     PickSnark {
         /// Path to the SNARK proof job to save
-        #[arg(short, long, value_name = "SNARK_PATH", default_value = "./snark_job.json")]
+        #[arg(
+            short,
+            long,
+            value_name = "SNARK_PATH",
+            default_value = "./snark_job.json"
+        )]
         path: String,
     },
     /// Submits block's SNARK proof to sequencer
@@ -76,7 +84,12 @@ enum Commands {
         #[arg(short, long, value_name = "TO_BLOCK")]
         to_block_number: u32,
         /// Path to the SNARK proof file to submit
-        #[arg(short, long, value_name = "SNARK_PATH", default_value = "./snark_proof.json")]
+        #[arg(
+            short,
+            long,
+            value_name = "SNARK_PATH",
+            default_value = "./snark_proof.json"
+        )]
         path: String,
     },
 }
@@ -103,13 +116,13 @@ async fn main() -> Result<()> {
     let url = client.sequencer_url();
 
     match cli.command {
-        Commands::PickFri {
-            path,
-        } => {
+        Commands::PickFri { path } => {
             tracing::info!("Picking next FRI proof job from sequencer at {}", url);
             match client.pick_fri_job().await? {
                 Some((block_number, data)) => {
-                    tracing::info!("Picked FRI job for block {block_number}, saved job to path {path}");
+                    tracing::info!(
+                        "Picked FRI job for block {block_number}, saved job to path {path}"
+                    );
                     serialize_to_file(&data, Path::new(&path));
                 }
                 None => {
@@ -117,23 +130,25 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::SubmitFri {
-            block_number,
-            path,
-        } => {
+        Commands::SubmitFri { block_number, path } => {
             tracing::info!("Submitting FRI proof for block {block_number} with proof from {path} to sequencer at {}", url);
             let file = std::fs::File::open(path)?;
             let fri_proof: String = serde_json::from_reader(file)?;
             client.submit_fri_proof(block_number, fri_proof).await?;
-            tracing::info!("Submitted FRI proof for block {block_number} to sequencer at {}", url);
+            tracing::info!(
+                "Submitted FRI proof for block {block_number} to sequencer at {}",
+                url
+            );
         }
-        Commands::PickSnark {
-            path,
-        } => {
+        Commands::PickSnark { path } => {
             tracing::info!("Picking next SNARK proof job from sequencer at {}", url);
             match client.pick_snark_job().await? {
                 Some(snark_proof_inputs) => {
-                    tracing::info!("Picked SNARK job for blocks [{}, {}], saved jobs to path {path}", snark_proof_inputs.from_block_number, snark_proof_inputs.to_block_number);
+                    tracing::info!(
+                        "Picked SNARK job for blocks [{}, {}], saved jobs to path {path}",
+                        snark_proof_inputs.from_block_number,
+                        snark_proof_inputs.to_block_number
+                    );
                     serialize_to_file(&snark_proof_inputs, Path::new(&path));
                 }
                 None => {
