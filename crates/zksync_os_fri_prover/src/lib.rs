@@ -34,6 +34,9 @@ pub struct Args {
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
+    /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
+    #[arg(long, default_value = "10000")]
+    pub circuit_limit: usize,
 }
 
 // Note: copied from zkos_prover_input_generator.rs
@@ -108,6 +111,7 @@ impl ProofDataClient {
 fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,
+    circuit_limit: usize,
     _gpu_state: &mut GpuSharedState,
 ) -> ProgramProof {
     let mut timing = Some(0f64);
@@ -115,8 +119,7 @@ fn create_proof(
         binary,
         prover_input,
         &Machine::Standard,
-        // FIXME: figure out how many instances (currently gpu ignores this).
-        1000,
+        circuit_limit,
         None,
         #[cfg(feature = "gpu")]
         &mut Some(_gpu_state),
@@ -189,7 +192,7 @@ pub async fn run(args: Args) {
             block_number
         );
 
-        let proof = create_proof(prover_input, &binary, &mut gpu_state);
+        let proof = create_proof(prover_input, &binary, args.circuit_limit, &mut gpu_state);
         println!(
             "{:?} finished proving block number {}",
             SystemTime::now(),
