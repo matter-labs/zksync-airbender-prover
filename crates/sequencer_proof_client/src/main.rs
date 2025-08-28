@@ -1,7 +1,12 @@
+use std::path::Path;
+
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{L2BlockNumber, SequencerProofClient};
+use zksync_airbender_cli::{
+    prover_utils::serialize_to_file,
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -42,11 +47,26 @@ impl Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Picks the next FRI proof job from the sequencer; sequencer marks job as picked (and will not give it to other clients, until the job expires)
-    PickFri {},
+    PickFri {
+        /// Path to the FRI proof job to save
+        #[arg(short, long, value_name = "FRI_PATH", default_value = "./fri_job.json")]
+        path: String,
+    },
     /// Submits block's FRI proof to sequencer
-    SubmitFri {},
+    SubmitFri {
+        /// The block number to submit the FRI proof for
+        #[arg(short, long, value_name = "BLOCK_NUMBER")]
+        block_number: u32,
+        /// Path to the FRI proof file to submit
+        #[arg(short, long, value_name = "FRI_PATH", default_value = "./fri_proof.json")]
+        path: String,
+    },
     /// Picks the next SNARK proof job from the sequencer; sequencer marks job as picked (and will not give it to other clients, until the job expires)
-    PickSnark {},
+    PickSnark {
+        /// Path to the SNARK proof job to save
+        #[arg(short, long, value_name = "SNARK_PATH", default_value = "./snark_job.json")]
+        path: String,
+    },
     /// Submits block's SNARK proof to sequencer
     SubmitSnark {
         /// The SNARK aggregates proofs starting from this block number
@@ -56,7 +76,7 @@ enum Commands {
         #[arg(short, long, value_name = "TO_BLOCK")]
         to_block_number: u32,
         /// Path to the SNARK proof file to submit
-        #[arg(short, long, value_name = "SNARK_PATH")]
+        #[arg(short, long, value_name = "SNARK_PATH", default_value = "./snark_proof.json")]
         path: String,
     },
 }
@@ -83,26 +103,43 @@ async fn main() -> Result<()> {
     let url = client.sequencer_url();
 
     match cli.command {
-        Commands::PickFri {} => {
-            todo!();
+        Commands::PickFri {
+            path,
+        } => {
+            tracing::info!("Picking next FRI proof job from sequencer at {}", url);
+            match client.pick_fri_job().await? {
+                Some((block_number, data)) => {
+                    tracing::info!("Picked FRI job for block {block_number}, saved job to path {path}");
+                    serialize_to_file(&data, Path::new(&path));
+                }
+                None => {
+                    tracing::info!("No FRI proof jobs available at the moment.");
+                }
+            }
         }
-        Commands::SubmitFri {} => {
-            todo!();
+        Commands::SubmitFri {
+            block_number,
+            path,
+        } => {
+            tracing::info!("Submitting FRI proof for block {block_number} with proof from {path} to sequencer at {}", url);
+            let file = std::fs::File::open(path)?;
+            let fri_proof: String = serde_json::from_reader(file)?;
+            client.submit_fri_proof(block_number, fri_proof).await?;
+            tracing::info!("Submitted FRI proof for block {block_number} to sequencer at {}", url);
         }
-        Commands::PickSnark {} => {
-            todo!();
-            // tracing::info!("Picking next SNARK proof job from sequencer at {}", url);
-            // match client.pick_snark_job().await? {
-            //     Some((proof, block)) => {
-            //         // TODO: would be nice to be able to specify where to save the proof file
-            //         let path = format!("./three_fri_proof_{block}.json");
-            //         tracing::info!("Picked SNARK job for block {block}, saved proof to path {path}");
-            //         serialize_to_file(&proof, Path::new(&path));
-            //     }
-            //     None => {
-            //         tracing::info!("No SNARK proof jobs available at the moment.");
-            //     }
-            // }
+        Commands::PickSnark {
+            path,
+        } => {
+            tracing::info!("Picking next SNARK proof job from sequencer at {}", url);
+            match client.pick_snark_job().await? {
+                Some(snark_proof_inputs) => {
+                    tracing::info!("Picked SNARK job for blocks [{}, {}], saved jobs to path {path}", snark_proof_inputs.from_block_number, snark_proof_inputs.to_block_number);
+                    serialize_to_file(&snark_proof_inputs, Path::new(&path));
+                }
+                None => {
+                    tracing::info!("No SNARK proof jobs available at the moment.");
+                }
+            }
         }
         Commands::SubmitSnark {
             from_block_number,

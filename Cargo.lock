@@ -5090,6 +5090,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "zksync_sequencer_proof_client",
 ]
 
 [[package]]
@@ -5143,6 +5144,7 @@ dependencies = [
  "bincode 2.0.1",
  "circuit_definitions",
  "clap",
+ "cli",
  "execution_utils",
  "reqwest",
  "serde",
