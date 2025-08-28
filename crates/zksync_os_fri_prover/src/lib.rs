@@ -33,7 +33,7 @@ pub struct Args {
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
-    /// Path to `app.bin`
+    /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
 }
@@ -118,7 +118,6 @@ fn create_proof(
         binary,
         prover_input,
         &Machine::Standard,
-        // FIXME: figure out how many instances (currently gpu ignores this).
         circuit_limit,
         None,
         #[cfg(feature = "gpu")]
