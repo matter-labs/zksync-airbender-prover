@@ -1,5 +1,5 @@
 *
 !crates
 !Cargo*
-!rust-toolchain
+!rust-toolchain.toml
 !multiblock_batch.bin
