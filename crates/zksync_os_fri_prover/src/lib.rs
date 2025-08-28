@@ -95,10 +95,7 @@ pub async fn run(args: Args) {
         zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
     );
     #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = GpuSharedState::new(
-        &binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-    );
+    let mut gpu_state = GpuSharedState::new(&binary);
 
     println!(
         "Starting Zksync OS FRI prover for {}",
