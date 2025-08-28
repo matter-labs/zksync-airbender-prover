@@ -5,14 +5,13 @@ use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
-    create_final_proofs_from_program_proof, create_proofs_internal,
-    generate_oracle_data_from_metadata_and_proof_list, program_proof_from_proof_list_and_metadata,
-    proof_list_and_metadata_from_program_proof, GpuSharedState, MainCircuitType, RecursionStrategy,
-    VerifierCircuitsIdentifiers,
+    create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
+    MainCircuitType, RecursionStrategy,
 };
 use zksync_airbender_cli::Machine;
 use zksync_airbender_execution_utils::{
-    get_padded_binary, ProgramProof, UNIVERSAL_CIRCUIT_VERIFIER,
+    generate_oracle_data_from_metadata_and_proof_list, get_padded_binary, ProgramProof,
+    VerifierCircuitsIdentifiers, UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
 
@@ -154,9 +153,9 @@ fn merge_fris(
         );
         let second_proof = snark_proof_input.fri_proofs[i].clone();
 
-        let (first_metadata, first_proof_list) = proof_list_and_metadata_from_program_proof(proof);
-        let (second_metadata, second_proof_list) =
-            proof_list_and_metadata_from_program_proof(second_proof);
+        let (first_metadata, first_proof_list) = proof.to_metadata_and_proof_list();
+        let (second_metadata, second_proof_list) = second_proof.to_metadata_and_proof_list();
+
         let first_oracle =
             generate_oracle_data_from_metadata_and_proof_list(&first_metadata, &first_proof_list);
         let second_oracle =
@@ -175,7 +174,7 @@ fn merge_fris(
             &mut Some(gpu_state),
             &mut Some(0f64),
         );
-        proof = program_proof_from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
+        proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
         tracing::info!("Finished linking proofs up to block {}", up_to_block);
     }
     // TODO: We can do a recursion step here as well, IIUC

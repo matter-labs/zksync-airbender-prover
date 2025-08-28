@@ -11,9 +11,8 @@ use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use zksync_airbender_cli::{
     prover_utils::{
-        create_proofs_internal, create_recursion_proofs, load_binary_from_path,
-        program_proof_from_proof_list_and_metadata, GpuSharedState, MainCircuitType,
-        RecursionStrategy,
+        create_proofs_internal, create_recursion_proofs, load_binary_from_path, GpuSharedState,
+        MainCircuitType, RecursionStrategy,
     },
     Machine,
 };
@@ -140,7 +139,7 @@ fn create_proof(
         &mut timing, // timing info
     );
 
-    program_proof_from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
+    ProgramProof::from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
 }
 
 pub async fn run(args: Args) {
