@@ -128,7 +128,7 @@ fn create_proof(
         proof_metadata,
         &None,
         #[cfg(feature = "gpu")]
-        &mut Some(gpu_state),
+        &mut Some(_gpu_state),
         #[cfg(not(feature = "gpu"))]
         &mut None,
         &mut timing, // timing info
