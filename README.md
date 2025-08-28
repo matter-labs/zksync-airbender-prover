@@ -46,8 +46,11 @@ cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http
 **This command currently requires around 140 GB of RAM - and GPU**
 
 ```bash
+# optional - increase stack size to 300M (TODO: check if this could be lower)
+ulimit -s 300000
+
 # start SNARK prover
-cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --output-dir ./outputs
+RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --output-dir ./outputs
 ```
 
 This one is only needed if you want to manually upload.
@@ -56,6 +59,11 @@ This one is only needed if you want to manually upload.
 # submit a SNARK proof manually to sequencer
 cargo run --release --bin sequencer_proof_client -- submit-snark --from-block-number 1 --to-block-number 10 --path ./outputs/snark_proof.json --url http://localhost:3124
 ```
+
+## Development / WIP
+
+* Add information on how to setup GPU for snark wraper
+* Add info on trusted setup.
 
 ## Policies
 

@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use zksync_airbender_cli::{
     prover_utils::{
         create_proofs_internal, create_recursion_proofs, load_binary_from_path,
-        program_proof_from_proof_list_and_metadata, GpuSharedState,
+        program_proof_from_proof_list_and_metadata, GpuSharedState, MainCircuitType,
+        RecursionStrategy,
     },
     Machine,
 };
@@ -126,9 +127,11 @@ fn create_proof(
     let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
         proof_list,
         proof_metadata,
+        // This is the default strategy (where recursion is done on reduced machine, and final step on 23 machine).
+        RecursionStrategy::UseReducedLog23Machine,
         &None,
         #[cfg(feature = "gpu")]
-        &mut Some(gpu_state),
+        &mut Some(_gpu_state),
         #[cfg(not(feature = "gpu"))]
         &mut None,
         &mut timing, // timing info
@@ -154,7 +157,8 @@ pub async fn run(args: Args) {
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
-    let mut gpu_state = GpuSharedState::new(&binary);
+    // For regular fri proving, we keep using reduced RiscV machine.
+    let mut gpu_state = GpuSharedState::new(&binary, MainCircuitType::ReducedRiscVMachine);
 
     println!("Starting Zksync OS FRI prover for {}", client.base_url);
 
