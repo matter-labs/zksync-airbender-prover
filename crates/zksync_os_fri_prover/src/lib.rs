@@ -9,14 +9,10 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use clap::Parser;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use zksync_airbender_cli::{
-    prover_utils::{
-        create_proofs_internal, create_recursion_proofs, load_binary_from_path, GpuSharedState,
-        RecursionStrategy,
-    },
-    Machine,
+use zksync_airbender_cli::prover_utils::{
+    create_proofs_internal, create_recursion_proofs, load_binary_from_path, GpuSharedState,
 };
-use zksync_airbender_execution_utils::ProgramProof;
+use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
