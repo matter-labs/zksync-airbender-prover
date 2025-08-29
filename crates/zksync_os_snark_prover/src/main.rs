@@ -183,7 +183,7 @@ fn merge_fris(
                 generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
 
             (current_proof_list, proof_metadata) = create_proofs_internal(
-                &verifier_binary,
+                verifier_binary,
                 non_determinism_data,
                 &Machine::Reduced,
                 proof_metadata.total_proofs(),
@@ -275,6 +275,7 @@ async fn run_linking_fri_snark(
         serialize_to_file(&final_proof, &one_fri_path);
 
         // Drop GPU state to release the airbender GPU resources (as now snark will be taking them).
+        #[cfg(feature = "gpu")]
         drop(gpu_state);
 
         tracing::info!("SNARKifying proof");

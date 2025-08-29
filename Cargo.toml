@@ -17,8 +17,9 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
-#zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "294c3edeb2abe687dc7f9e2d03e9d4335414114a" }
-zkos_wrapper = { package = "zkos-wrapper" , path = "../zkos-wrapper/wrapper"}
+# change to v0.4.4 after release is cut.
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "0e0d827df1bf6d62394d08c39ea390223b28d743" }
+#zkos_wrapper = { package = "zkos-wrapper" , path = "../zkos-wrapper/wrapper"}
 
 
 zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.4.4" }
