@@ -194,15 +194,15 @@ async fn run_linking_fri_snark(
 
     tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-    #[cfg(feature = "gpu")]
-    let mut gpu_state = GpuSharedState::new(
-        &verifier_binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-    );
-    #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = GpuSharedState::new(&verifier_binary);
 
     loop {
+        #[cfg(feature = "gpu")]
+        let mut gpu_state = GpuSharedState::new(
+            &verifier_binary,
+            zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+        );
+        #[cfg(not(feature = "gpu"))]
+        let mut gpu_state = GpuSharedState::new(&verifier_binary);
         let proof_time = Instant::now();
         tracing::info!("Started picking job");
         let snark_proof_input = match sequencer_client.pick_snark_job().await {
@@ -252,6 +252,9 @@ async fn run_linking_fri_snark(
         let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
 
         serialize_to_file(&final_proof, &one_fri_path);
+
+        // Drop GPU state to release the airbender GPU resources (as now snark will be taking them).
+        drop(gpu_state);
 
         tracing::info!("SNARKifying proof");
         let snark_time = Instant::now();
