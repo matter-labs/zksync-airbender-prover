@@ -524,7 +524,7 @@ dependencies = [
 [[package]]
 name = "circuit_mersenne_field"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zkos-wrapper.git?rev=0e0d827df1bf6d62394d08c39ea390223b28d743#0e0d827df1bf6d62394d08c39ea390223b28d743"
+source = "git+https://github.com/matter-labs/zkos-wrapper.git?tag=v0.4.3#10c7bd220c7ff0339cf69affaa0b2f2293c75e97"
 dependencies = [
  "boojum",
  "field",
@@ -4724,7 +4724,7 @@ dependencies = [
 [[package]]
 name = "zkos-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zkos-wrapper.git?rev=0e0d827df1bf6d62394d08c39ea390223b28d743#0e0d827df1bf6d62394d08c39ea390223b28d743"
+source = "git+https://github.com/matter-labs/zkos-wrapper.git?tag=v0.4.3#10c7bd220c7ff0339cf69affaa0b2f2293c75e97"
 dependencies = [
  "blake2_with_compression_verifier",
  "boojum",
