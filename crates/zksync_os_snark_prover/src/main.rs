@@ -6,9 +6,7 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
-    RecursionStrategy,
 };
-use zksync_airbender_cli::Machine;
 use zksync_airbender_execution_utils::{
     generate_oracle_data_from_metadata_and_proof_list, get_padded_binary, ProgramProof,
     VerifierCircuitsIdentifiers, UNIVERSAL_CIRCUIT_VERIFIER,
@@ -168,7 +166,7 @@ fn merge_fris(
         let (current_proof_list, proof_metadata) = create_proofs_internal(
             verifier_binary,
             merged_input,
-            &Machine::Reduced,
+            &zksync_airbender_execution_utils::Machine::Reduced,
             100, // Guessing - FIXME!!
             Some(first_metadata.create_prev_metadata()),
             &mut Some(gpu_state),
@@ -241,7 +239,7 @@ async fn run_linking_fri_snark(
         tracing::info!("Creating final proof before SNARKification");
         let final_proof = create_final_proofs_from_program_proof(
             proof,
-            RecursionStrategy::UseReducedLog23Machine,
+            zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
             // TODO: currently disabling GPU on final proofs, but we should have a switch in the main program
             // that allow people to run in 3 modes:
             // - cpu only
