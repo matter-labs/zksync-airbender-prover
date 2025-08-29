@@ -8,8 +8,9 @@ use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
 };
 use zksync_airbender_execution_utils::{
-    generate_oracle_data_from_metadata_and_proof_list, get_padded_binary, ProgramProof,
-    VerifierCircuitsIdentifiers, UNIVERSAL_CIRCUIT_VERIFIER,
+    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
+    get_padded_binary, Machine, ProgramProof, VerifierCircuitsIdentifiers,
+    UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
 
@@ -163,7 +164,7 @@ fn merge_fris(
         merged_input.extend(first_oracle);
         merged_input.extend(second_oracle);
 
-        let (current_proof_list, proof_metadata) = create_proofs_internal(
+        let (mut current_proof_list, mut proof_metadata) = create_proofs_internal(
             verifier_binary,
             merged_input,
             &zksync_airbender_execution_utils::Machine::Reduced,
@@ -172,6 +173,26 @@ fn merge_fris(
             &mut Some(gpu_state),
             &mut Some(0f64),
         );
+        // Let's do recursion.
+        let mut recursion_level = 0;
+
+        while current_proof_list.reduced_proofs.len() > 2 {
+            tracing::info!("Recursion step {} after fri merging", recursion_level);
+            recursion_level += 1;
+            let non_determinism_data =
+                generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
+
+            (current_proof_list, proof_metadata) = create_proofs_internal(
+                &verifier_binary,
+                non_determinism_data,
+                &Machine::Reduced,
+                proof_metadata.total_proofs(),
+                Some(proof_metadata.create_prev_metadata()),
+                &mut Some(gpu_state),
+                &mut Some(0f64),
+            );
+        }
+
         proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
         tracing::info!("Finished linking proofs up to block {}", up_to_block);
     }
