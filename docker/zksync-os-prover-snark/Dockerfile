@@ -35,7 +35,7 @@ RUN cargo build -p zksync_os_snark_prover --release
 
 ###############
 
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.9.1-runtime-ubuntu22.04
 
 # HACK copying to root is the only way to make Docker layer caching work for these files for some reason
 COPY --from=builder /setup_compact.key /setup_compact.key
