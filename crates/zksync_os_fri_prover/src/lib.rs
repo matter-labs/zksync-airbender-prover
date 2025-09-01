@@ -6,12 +6,11 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
-use reqwest::{Client, StatusCode};
-use serde::{Deserialize, Serialize};
 use zksync_airbender_cli::prover_utils::{
-    create_proofs_internal, create_recursion_proofs, load_binary_from_path, GpuSharedState,
+    create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file, GpuSharedState
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
+use zksync_sequencer_proof_client::SequencerProofClient;
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -31,6 +30,9 @@ pub struct Args {
     /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
+    /// Path to the output file
+    #[arg(short, long)]
+    pub path: Option<PathBuf>,
 }
 
 fn create_proof(
@@ -139,8 +141,9 @@ pub async fn run(args: Args) {
         // 2) base64-encode that binary blob
         let proof_b64 = STANDARD.encode(&proof_bytes);
 
-        let path = "./fri_proof.json".to_string();
-        serialize_to_file(&proof_b64, Path::new(&path));
+        if let Some(ref path) = args.path {
+            serialize_to_file(&proof_b64, path);
+        }
 
         match client.submit_fri_proof(block_number, proof_b64).await {
             Ok(_) => println!(

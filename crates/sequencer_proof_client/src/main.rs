@@ -1,9 +1,6 @@
-use std::path::Path;
-
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use zkos_wrapper::SnarkWrapperProof;
-use zksync_airbender_cli::prover_utils::serialize_to_file;
 use zksync_sequencer_proof_client::{L2BlockNumber, SequencerProofClient};
 
 #[derive(Parser)]
@@ -123,7 +120,8 @@ async fn main() -> Result<()> {
                     tracing::info!(
                         "Picked FRI job for block {block_number}, saved job to path {path}"
                     );
-                    serialize_to_file(&data, Path::new(&path));
+                    let mut dst = std::fs::File::create(path).unwrap();
+                    serde_json::to_writer_pretty(&mut dst, &data).unwrap();
                 }
                 None => {
                     tracing::info!("No FRI proof jobs available at the moment.");
@@ -149,7 +147,8 @@ async fn main() -> Result<()> {
                         snark_proof_inputs.from_block_number,
                         snark_proof_inputs.to_block_number
                     );
-                    serialize_to_file(&snark_proof_inputs, Path::new(&path));
+                    let mut dst = std::fs::File::create(path).unwrap();
+                    serde_json::to_writer_pretty(&mut dst, &snark_proof_inputs).unwrap();
                 }
                 None => {
                     tracing::info!("No SNARK proof jobs available at the moment.");

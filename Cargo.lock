@@ -4896,7 +4896,6 @@ dependencies = [
  "bincode 2.0.1",
  "circuit_definitions",
  "clap",
- "cli",
  "execution_utils",
  "reqwest",
  "serde",
