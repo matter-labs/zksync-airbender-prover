@@ -32,6 +32,9 @@ pub struct Args {
     /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
+    /// Number of iterations (proofs) to generate before exiting. If not specified, runs indefinitely
+    #[arg(long)]
+    pub iterations: Option<usize>,
 }
 
 // Note: copied from zkos_prover_input_generator.rs
@@ -166,6 +169,8 @@ pub async fn run(args: Args) {
 
     println!("Starting Zksync OS FRI prover for {}", client.base_url);
 
+    let mut proof_count = 0;
+
     loop {
         let (block_number, prover_input) = match client.pick_next_prover_job().await {
             Err(err) => {
@@ -194,6 +199,10 @@ pub async fn run(args: Args) {
         );
 
         let proof = create_proof(prover_input, &binary, args.circuit_limit, &mut gpu_state);
+
+        // Increment proof counter after creating proof, regardless of submission success
+        proof_count += 1;
+
         println!(
             "{:?} finished proving block number {}",
             SystemTime::now(),
@@ -219,6 +228,17 @@ pub async fn run(args: Args) {
                     block_number,
                     err
                 );
+            }
+        }
+
+        // Check if we've reached the iteration limit
+        if let Some(max_iterations) = args.iterations {
+            if proof_count >= max_iterations {
+                println!(
+                    "Reached maximum iterations ({}), exiting...",
+                    max_iterations
+                );
+                break;
             }
         }
     }

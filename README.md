@@ -44,7 +44,7 @@ Sample usage for commands.
 # start FRI prover
 cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin
 ```
-
+Specify optional `--iterations` arguement to run FRI prover N times and then exit.
 
 **This command currently requires around 140 GB of RAM - and GPU**
 
