@@ -234,10 +234,7 @@ pub async fn run(args: Args) {
         // Check if we've reached the iteration limit
         if let Some(max_iterations) = args.iterations {
             if proof_count >= max_iterations {
-                println!(
-                    "Reached maximum iterations ({}), exiting...",
-                    max_iterations
-                );
+                println!("Reached maximum iterations ({max_iterations}), exiting...",);
                 break;
             }
         }
