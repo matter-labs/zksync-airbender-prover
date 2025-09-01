@@ -31,7 +31,13 @@ COPY . .
 
 RUN curl -Lo /setup_compact.key https://storage.googleapis.com/matterlabs-setup-keys-europe/setup-keys/setup_compact.key
 
-RUN cargo build -p zksync_os_snark_prover --release
+# Bellman-cuda is needed during compilation.
+RUN git clone https://github.com/matter-labs/era-bellman-cuda.git --branch main bellman-cuda && \
+    cmake -Bbellman-cuda/build -Sbellman-cuda/ -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build bellman-cuda/build/
+
+
+RUN BELLMAN_CUDA_DIR=$PWD/bellman-cuda cargo build -p zksync_os_snark_prover --release
 
 ###############
 

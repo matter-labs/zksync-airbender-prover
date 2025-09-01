@@ -75,6 +75,29 @@ Specify --path arguement to override default location.
 * Add information on how to setup GPU for snark wraper
 
 
+## FAQ
+
+If you get the error like `cargo::rustc-check-cfg=cfg(no_cuda)` during compilation, you might have to install
+Bellman Cuda (see instructions below).
+
+
+## Installing bellman-cuda
+
+
+```shell
+git clone https://github.com/matter-labs/era-bellman-cuda.git --branch main bellman-cuda && \
+cmake -Bbellman-cuda/build -Sbellman-cuda/ -DCMAKE_BUILD_TYPE=Release && \
+cmake --build bellman-cuda/build/
+```
+
+And then:
+
+```shell
+export BELLMAN_CUDA_DIR=...
+```
+
+
+
 ## Policies
 
 - [Security policy](SECURITY.md)
