@@ -7,7 +7,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
 use zksync_airbender_cli::prover_utils::{
-    create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file, GpuSharedState
+    create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
+    GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::SequencerProofClient;
