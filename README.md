@@ -32,6 +32,9 @@ Before starting, make sure that your **sequencer** has fake proofs disabled:
 prover_api_fake_fri_provers_enabled=false prover_api_fake_snark_provers_enabled=false
 ```
 
+Before starting, please download the trusted setup file (see info in crs/README.md).
+
+
 
 Sample usage for commands.
 
@@ -50,7 +53,7 @@ cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http
 ulimit -s 300000
 
 # start SNARK prover
-RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --output-dir ./outputs
+RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs
 ```
 
 This one is only needed if you want to manually upload.
@@ -63,7 +66,7 @@ cargo run --release --bin sequencer_proof_client -- submit-snark --from-block-nu
 ## Development / WIP
 
 * Add information on how to setup GPU for snark wraper
-* Add info on trusted setup.
+
 
 ## Policies
 
