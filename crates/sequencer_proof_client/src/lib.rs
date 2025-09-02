@@ -20,6 +20,18 @@ impl fmt::Display for L2BlockNumber {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct NextFriProverJobPayload {
+    block_number: u32,
+    prover_input: String, // base64-encoded
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SubmitFriProofPayload {
+    block_number: u64,
+    proof: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct GetSnarkProofPayload {
     block_number_from: u64,
     block_number_to: u64,
@@ -30,7 +42,7 @@ struct GetSnarkProofPayload {
 struct SubmitSnarkProofPayload {
     block_number_from: u64,
     block_number_to: u64,
-    proof: String, // base64‑encoded FRI proofs
+    proof: String, // base64‑encoded SNARK proof
 }
 
 impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
@@ -85,6 +97,46 @@ impl SequencerProofClient {
 
     pub fn sequencer_url(&self) -> &str {
         &self.url
+    }
+
+    /// Fetch the next block to prove.
+    /// Returns `Ok(None)` if there's no block pending (204 No Content).
+    pub async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+        let url = format!("{}/prover-jobs/FRI/pick", self.url);
+        let resp = self.client.post(&url).send().await?;
+
+        match resp.status() {
+            StatusCode::OK => {
+                let body: NextFriProverJobPayload = resp.json().await?;
+                let data = STANDARD
+                    .decode(&body.prover_input)
+                    .map_err(|e| anyhow!("Failed to decode block data: {}", e))?;
+                Ok(Some((body.block_number, data)))
+            }
+            StatusCode::NO_CONTENT => Ok(None),
+            s => Err(anyhow!("Unexpected status {} when fetching next block", s)),
+        }
+    }
+
+    /// Submit a proof for the processed block
+    /// Returns the vector of u32 as returned by the server.
+    pub async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()> {
+        let url = format!("{}/prover-jobs/FRI/submit", self.url);
+        let payload = SubmitFriProofPayload {
+            block_number: block_number as u64,
+            proof,
+        };
+
+        let resp = self.client.post(&url).json(&payload).send().await?;
+
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Server returned {} when submitting proof",
+                resp.status()
+            ))
+        }
     }
 
     pub async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {

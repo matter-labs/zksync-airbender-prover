@@ -42,9 +42,9 @@ Sample usage for commands.
 
 ```bash
 # start FRI prover
-cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin
+cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin --path ./output/fri_proof.json
 ```
-
+Specify optional argument --path if you want to serialize FRI proof to file.
 
 **This command currently requires around 140 GB of RAM - and GPU**
 
@@ -59,9 +59,16 @@ RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snar
 This one is only needed if you want to manually upload.
 
 ```bash
-# submit a SNARK proof manually to sequencer
-cargo run --release --bin sequencer_proof_client -- submit-snark --from-block-number 1 --to-block-number 10 --path ./outputs/snark_proof.json --url http://localhost:3124
+# pick a FRI job manually and serialize to file specified in `--path`
+cargo run --release --bin zksync_sequencer_proof_client -- pick-fri --url http://localhost:3124 --path "./fri_job.json"
+# submit a FRI proof specified in `--path` manually to sequencer
+cargo run --release --bin zksync_sequencer_proof_client -- submit-fri --block-number 1 --url http://localhost:3124 --path "./fri_proof.json"
+# pick a SNARK job manually and serialize to file specified in `--path`
+cargo run --release --bin zksync_sequencer_proof_client -- pick-snark --url http://localhost:3124 --path "./snark_job.json"
+# submit a SNARK proof specified in `--path` manually to sequencer
+cargo run --release --bin zksync_sequencer_proof_client -- submit-snark --from-block-number 1 --to-block-number 2 --url http://localhost:3124 --path "./snark_proof.json"
 ```
+Specify --path argument to override default location.
 
 ## Development / WIP
 
