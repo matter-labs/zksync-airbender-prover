@@ -52,6 +52,9 @@ enum Commands {
         setup: SetupOptions,
         // #[arg(short, long, default_value = "linking-fris")]
         // mode: SnarkMode,
+        /// Number of iterations (proofs) to generate before exiting. If not specified, runs indefinitely
+        #[arg(long)]
+        iterations: Option<usize>,
     },
 }
 
@@ -115,6 +118,7 @@ fn main() {
                     trusted_setup_file,
                 },
             // mode,
+            iterations,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -130,6 +134,7 @@ fn main() {
                     sequencer_url,
                     output_dir,
                     trusted_setup_file,
+                    iterations,
                 ))
                 .expect("failed whilst running SNARK prover");
         }
@@ -215,12 +220,15 @@ async fn run_linking_fri_snark(
     sequencer_url: Option<String>,
     output_dir: String,
     trusted_setup_file: Option<String>,
+    iterations: Option<usize>,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
     let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
 
     tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+
+    let mut proof_count = 0;
 
     loop {
         #[cfg(feature = "gpu")]
@@ -327,6 +335,15 @@ async fn run_linking_fri_snark(
                 tracing::error!("Failed to submit SNARK job due to {e:?}, skipping");
             }
         };
+
+        proof_count += 1;
+
+        if let Some(max_iterations) = iterations {
+            if proof_count >= max_iterations {
+                tracing::info!("Reached maximum iterations ({max_iterations}), exiting...");
+                return Ok(());
+            }
+        }
     }
 }
 
