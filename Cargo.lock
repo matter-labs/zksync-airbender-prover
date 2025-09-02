@@ -4865,6 +4865,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "zksync_sequencer_proof_client",
 ]
 
 [[package]]
