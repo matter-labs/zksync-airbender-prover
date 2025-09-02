@@ -99,7 +99,7 @@ impl SequencerProofClient {
         &self.url
     }
 
-    ///Fetch the next block to prove.
+    /// Fetch the next block to prove.
     /// Returns `Ok(None)` if there's no block pending (204 No Content).
     pub async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let url = format!("{}/prover-jobs/FRI/pick", self.url);
