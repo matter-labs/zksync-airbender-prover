@@ -44,7 +44,7 @@ Sample usage for commands.
 # start FRI prover
 cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin
 ```
-Specify optional `--iterations` arguement to run FRI prover N times and then exit.
+Specify optional `--iterations` argument to run FRI prover N times and then exit.
 
 **This command currently requires around 140 GB of RAM - and GPU**
 
@@ -55,8 +55,9 @@ ulimit -s 300000
 # start SNARK prover
 RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs
 ```
+Specify optional `--iterations` argument to run SNARK prover N times and then exit.
 
-This one is only needed if you want to manually upload.
+**This one is only needed if you want to manually upload.**
 
 ```bash
 # submit a SNARK proof manually to sequencer
