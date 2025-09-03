@@ -43,7 +43,7 @@ RUN BELLMAN_CUDA_DIR=$PWD/bellman-cuda cargo build -p zksync_os_snark_prover --r
 
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/zksync-os-prover-snark/entrypoint.sh /entrypoint.sh
 
 # HACK copying to root is the only way to make Docker layer caching work for these files for some reason
 COPY --from=builder /setup_compact.key /setup_compact.key
