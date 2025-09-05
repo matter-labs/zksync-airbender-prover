@@ -1,7 +1,8 @@
 [workspace]
 members = [ "crates/sequencer_proof_client",
     "crates/zksync_os_fri_prover",
-    "crates/zksync_os_snark_prover"
+    "crates/zksync_os_snark_prover",
+    "crates/zksync_os_prover_service"
 ]
 resolver = "2"
 

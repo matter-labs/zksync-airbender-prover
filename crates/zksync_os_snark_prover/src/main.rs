@@ -141,7 +141,7 @@ fn main() {
     }
 }
 
-fn merge_fris(
+pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,
     gpu_state: &mut GpuSharedState,
@@ -216,7 +216,7 @@ fn merge_fris(
     proof
 }
 
-async fn run_linking_fri_snark(
+pub async fn run_linking_fri_snark(
     sequencer_url: Option<String>,
     output_dir: String,
     trusted_setup_file: Option<String>,
@@ -347,7 +347,7 @@ async fn run_linking_fri_snark(
     }
 }
 
-fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
 }

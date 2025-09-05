@@ -39,7 +39,7 @@ pub struct Args {
     pub path: Option<PathBuf>,
 }
 
-fn create_proof(
+pub fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,
     circuit_limit: usize,
@@ -74,7 +74,7 @@ fn create_proof(
     ProgramProof::from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
 }
 
-pub async fn run(args: Args) {
+pub async fn run(args: Args) -> anyhow::Result<()> {
     println!(
         "running without logging, disregarding enabled_logging flag = {}",
         args.enabled_logging
@@ -179,4 +179,6 @@ pub async fn run(args: Args) {
             }
         }
     }
+
+    Ok(())
 }
