@@ -1,4 +1,5 @@
+* @RomanBrodetski @EmilLuta @popzxc @mm-zk
 .github/release-please/** @matter-labs/core-release-managers
 **/CHANGELOG.md @matter-labs/core-release-managers
-CODEOWNERS @RomanBrodetski @perekopskiy @Deniallugo @popzxc @matter-labs/prover-subsystem
+CODEOWNERS @RomanBrodetski @EmilLuta @popzxc @mm-zk
 .github/workflows/** @matter-labs/devops
