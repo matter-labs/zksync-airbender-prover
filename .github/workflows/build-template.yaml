@@ -22,7 +22,7 @@ on:
 jobs:
   build-images:
     name: Build and Push Docker Images
-    runs-on: [matterlabs-ci-runner-high-performance]
+    runs-on: [matterlabs-ci-runner-c3d]
     permissions:
       packages: write
       contents: read
