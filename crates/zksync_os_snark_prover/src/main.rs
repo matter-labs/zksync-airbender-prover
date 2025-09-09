@@ -289,7 +289,7 @@ async fn run_linking_fri_snark(
         serialize_to_file(&final_proof, &one_fri_path);
 
         // Drop GPU state to release the airbender GPU resources (as now snark will be taking them).
-        #[cfg(gpu)]
+        #[cfg(feature = "gpu")]
         drop(gpu_state);
 
         tracing::info!("SNARKifying proof");
