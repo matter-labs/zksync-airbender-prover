@@ -26,7 +26,7 @@ zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/
 
 
 bellman = { package = "zksync_bellman", version = "=0.32.2" }
-circuit_definitions = "=0.152.5"
+circuit_definitions = "=0.152.7"
 crypto_codegen = { package = "zksync_solidity_vk_codegen", version = "=0.32.2" }
 
 anyhow = "1.0"
