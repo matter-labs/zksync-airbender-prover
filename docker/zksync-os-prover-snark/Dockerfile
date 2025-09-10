@@ -37,7 +37,7 @@ RUN git clone https://github.com/matter-labs/era-bellman-cuda.git --branch main 
     cmake --build bellman-cuda/build/
 
 
-RUN BELLMAN_CUDA_DIR=$PWD/bellman-cuda cargo build -p zksync_os_snark_prover --release
+RUN BELLMAN_CUDA_DIR=$PWD/bellman-cuda cargo build -p zksync_os_snark_prover --release --features gpu
 
 ###############
 
