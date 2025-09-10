@@ -1,12 +1,14 @@
 // TODO: Add testing around this
 
+pub mod utils;
+
 use anyhow::{anyhow, Context};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
-use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
+use circuit_definitions::{circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit, snark_wrapper::franklin_crypto::alt_babyjubjub};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, future::Future};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
@@ -81,27 +83,37 @@ pub struct SnarkProofInputs {
     pub fri_proofs: Vec<ProgramProof>,
 }
 
+pub trait ProofClient {
+    fn new(url: String) -> Self;
+    fn sequencer_url(&self) -> &str;
+    fn pick_fri_job(&self) -> impl Future<Output = anyhow::Result<Option<(u32, Vec<u8>)>>> + '_ + Send;
+    fn submit_fri_proof(&self, block_number: u32, proof: String) -> impl Future<Output = anyhow::Result<()>> + '_ + Send;
+    fn pick_snark_job(&self) -> impl Future<Output = anyhow::Result<Option<SnarkProofInputs>>> + '_ + Send;
+    fn submit_snark_proof(&self, from_block_number: L2BlockNumber, to_block_number: L2BlockNumber, proof: SnarkWrapperProof) -> impl Future<Output = anyhow::Result<()>> + '_ + Send;
+    fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String>;
+}
+
 #[derive(Debug)]
 pub struct SequencerProofClient {
     client: reqwest::Client,
     url: String,
 }
 
-impl SequencerProofClient {
-    pub fn new(sequencer_url: String) -> Self {
+impl ProofClient for SequencerProofClient {
+    fn new(sequencer_url: String) -> Self {
         Self {
             client: reqwest::Client::new(),
             url: sequencer_url,
         }
     }
 
-    pub fn sequencer_url(&self) -> &str {
+    fn sequencer_url(&self) -> &str {
         &self.url
     }
 
     /// Fetch the next block to prove.
     /// Returns `Ok(None)` if there's no block pending (204 No Content).
-    pub async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let url = format!("{}/prover-jobs/FRI/pick", self.url);
         let resp = self.client.post(&url).send().await?;
 
@@ -120,7 +132,7 @@ impl SequencerProofClient {
 
     /// Submit a proof for the processed block
     /// Returns the vector of u32 as returned by the server.
-    pub async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()> {
+    async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()> {
         let url = format!("{}/prover-jobs/FRI/submit", self.url);
         let payload = SubmitFriProofPayload {
             block_number: block_number as u64,
@@ -139,7 +151,7 @@ impl SequencerProofClient {
         }
     }
 
-    pub async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
+    async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = format!("{}/prover-jobs/SNARK/pick", self.url);
         let resp = self.client.post(&url).send().await?;
         match resp.status() {
@@ -156,7 +168,7 @@ impl SequencerProofClient {
         }
     }
 
-    pub async fn submit_snark_proof(
+    async fn submit_snark_proof(
         &self,
         from_block_number: L2BlockNumber,
         to_block_number: L2BlockNumber,

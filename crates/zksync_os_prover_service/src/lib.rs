@@ -13,7 +13,7 @@ use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_cli::prover_utils::{create_final_proofs_from_program_proof, load_binary_from_path, serialize_to_file};
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 use zksync_os_fri_prover::create_proof;
-use zksync_sequencer_proof_client::SequencerProofClient;
+use zksync_sequencer_proof_client::{ProofClient, SequencerProofClient};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum GPUMode {
@@ -119,7 +119,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 args.enabled_logging
             );
 
-            let client = SequencerProofClient::new(args.base_url);
+            let client = <SequencerProofClient as ProofClient>::new(args.base_url);
 
             let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
                 manifest_path
@@ -166,18 +166,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     )
                     .await?;
                 }
-
-                // FIXME: do we need to drop here?
-                #[cfg(feature = "gpu")]
-                drop(gpu_state);
-                // For regular fri proving, we keep using reduced RiscV machine.
-                #[cfg(feature = "gpu")]
-                let mut gpu_state = GpuSharedState::new(
-                    &verifier_binary,
-                    zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-                );
-                #[cfg(not(feature = "gpu"))]
-                let mut gpu_state = GpuSharedState::new(&verifier_binary);
 
                 // Here we do exactly one SNARK proof
                 run_snark_prover(

@@ -12,7 +12,7 @@ use zksync_airbender_execution_utils::{
     get_padded_binary, Machine, ProgramProof, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
+use zksync_sequencer_proof_client::{ProofClient, SequencerProofClient, SnarkProofInputs};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -223,7 +223,7 @@ pub async fn run_linking_fri_snark(
     iterations: Option<usize>,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
-    let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
+    let sequencer_client = <SequencerProofClient as ProofClient>::new(sequencer_url.clone());
 
     tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);

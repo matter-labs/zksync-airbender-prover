@@ -11,8 +11,9 @@ use zksync_airbender_cli::prover_utils::{
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::SequencerProofClient;
+use zksync_sequencer_proof_client::{ProofClient, SequencerProofClient};
 
+mod tests;
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
@@ -80,7 +81,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         args.enabled_logging
     );
 
-    let client = SequencerProofClient::new(args.base_url);
+    let client = <SequencerProofClient as ProofClient>::new(args.base_url);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
