@@ -37,11 +37,13 @@ RUN git clone https://github.com/matter-labs/era-bellman-cuda.git --branch main 
     cmake --build bellman-cuda/build/
 
 
-RUN BELLMAN_CUDA_DIR=$PWD/bellman-cuda cargo build -p zksync_os_snark_prover --release
+RUN BELLMAN_CUDA_DIR=$PWD/bellman-cuda cargo build -p zksync_os_snark_prover --release --features gpu
 
 ###############
 
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+
+COPY docker/zksync-os-prover-snark/entrypoint.sh /entrypoint.sh
 
 # HACK copying to root is the only way to make Docker layer caching work for these files for some reason
 COPY --from=builder /setup_compact.key /setup_compact.key
@@ -51,4 +53,4 @@ RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /
 COPY multiblock_batch.bin /multiblock_batch.bin
 COPY --from=builder /usr/src/zksync/target/release/zksync_os_snark_prover /usr/bin/
 
-ENTRYPOINT ["zksync_os_snark_prover"]
+ENTRYPOINT ["/entrypoint.sh"]

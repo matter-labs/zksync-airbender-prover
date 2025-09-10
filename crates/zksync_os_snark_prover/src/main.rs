@@ -271,26 +271,27 @@ pub async fn run_linking_fri_snark(
 
         let proof = merge_fris(snark_proof_input, &verifier_binary, &mut gpu_state);
 
+        // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
+        #[cfg(feature = "gpu")]
+        drop(gpu_state);
+
         tracing::info!("Creating final proof before SNARKification");
         let final_proof = create_final_proofs_from_program_proof(
             proof,
             zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
-            // TODO: currently disabling GPU on final proofs, but we should have a switch in the main program
+            // TODO: currently enabled GPU on final proofs, but we should have a switch in the main program
             // that allow people to run in 3 modes:
             // - cpu only
             // - small gpu (then this is false)
             // - gpu (a.k.a large gpu) - then this is true.
-            false,
+            // NOTE: use this as false, if you want to run on a small GPU
+            true,
         );
 
         tracing::info!("Finished creating final proof");
         let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
 
         serialize_to_file(&final_proof, &one_fri_path);
-
-        // Drop GPU state to release the airbender GPU resources (as now snark will be taking them).
-        #[cfg(feature = "gpu")]
-        drop(gpu_state);
 
         tracing::info!("SNARKifying proof");
         let snark_time = Instant::now();
