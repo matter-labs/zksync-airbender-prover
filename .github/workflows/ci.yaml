@@ -11,7 +11,7 @@ env:
 
 jobs:
   general-checks:
-    runs-on: ubuntu-latest
+    runs-on: matterlabs-ci-runner-high-performance
 
     steps:
       - name: Checkout repository
