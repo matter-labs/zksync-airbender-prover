@@ -5,7 +5,10 @@ pub mod utils;
 use anyhow::{anyhow, Context};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
-use circuit_definitions::{circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit, snark_wrapper::franklin_crypto::alt_babyjubjub};
+use circuit_definitions::{
+    circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit,
+    snark_wrapper::franklin_crypto::alt_babyjubjub,
+};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::{fmt, future::Future};
@@ -86,10 +89,23 @@ pub struct SnarkProofInputs {
 pub trait ProofClient {
     fn new(url: String) -> Self;
     fn sequencer_url(&self) -> &str;
-    fn pick_fri_job(&self) -> impl Future<Output = anyhow::Result<Option<(u32, Vec<u8>)>>> + '_ + Send;
-    fn submit_fri_proof(&self, block_number: u32, proof: String) -> impl Future<Output = anyhow::Result<()>> + '_ + Send;
-    fn pick_snark_job(&self) -> impl Future<Output = anyhow::Result<Option<SnarkProofInputs>>> + '_ + Send;
-    fn submit_snark_proof(&self, from_block_number: L2BlockNumber, to_block_number: L2BlockNumber, proof: SnarkWrapperProof) -> impl Future<Output = anyhow::Result<()>> + '_ + Send;
+    fn pick_fri_job(
+        &self,
+    ) -> impl Future<Output = anyhow::Result<Option<(u32, Vec<u8>)>>> + '_ + Send;
+    fn submit_fri_proof(
+        &self,
+        block_number: u32,
+        proof: String,
+    ) -> impl Future<Output = anyhow::Result<()>> + '_ + Send;
+    fn pick_snark_job(
+        &self,
+    ) -> impl Future<Output = anyhow::Result<Option<SnarkProofInputs>>> + '_ + Send;
+    fn submit_snark_proof(
+        &self,
+        from_block_number: L2BlockNumber,
+        to_block_number: L2BlockNumber,
+        proof: SnarkWrapperProof,
+    ) -> impl Future<Output = anyhow::Result<()>> + '_ + Send;
     fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String>;
 }
 

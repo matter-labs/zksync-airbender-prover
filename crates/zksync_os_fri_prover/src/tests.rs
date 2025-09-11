@@ -1,18 +1,21 @@
-
-
 #[cfg(test)]
 mod tests {
     use std::{path::Path, time::SystemTime};
 
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use zksync_airbender_cli::prover_utils::{load_binary_from_path, serialize_to_file, GpuSharedState};
-    use zksync_sequencer_proof_client::{utils::FileBasedProofClient, ProofClient};
     use crate::create_proof;
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use zksync_airbender_cli::prover_utils::{
+        load_binary_from_path, serialize_to_file, GpuSharedState,
+    };
+    use zksync_sequencer_proof_client::{utils::FileBasedProofClient, ProofClient};
 
     use super::*;
 
     #[tokio::test]
     async fn test_fri_prover() {
+        // To run the test you need to have the following files:
+        // - ../../fri_job.json
+
         let client = <FileBasedProofClient as ProofClient>::new("../../".to_string());
 
         let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -20,7 +23,11 @@ mod tests {
         } else {
             ".".to_string()
         };
-        let binary_path = Path::new(&manifest_path).join("../../multiblock_batch.bin").to_str().unwrap().to_string();
+        let binary_path = Path::new(&manifest_path)
+            .join("../../multiblock_batch.bin")
+            .to_str()
+            .unwrap()
+            .to_string();
         let binary = load_binary_from_path(&binary_path);
         // For regular fri proving, we keep using reduced RiscV machine.
         #[cfg(feature = "gpu")]

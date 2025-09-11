@@ -1,3 +1,4 @@
+mod tests;
 pub mod utils;
 
 use std::{
@@ -6,27 +7,16 @@ use std::{
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use zkos_wrapper::{prove, SnarkWrapperProof};
 #[cfg(feature = "gpu")]
 use zksync_airbender_cli::prover_utils::GpuSharedState;
-use zksync_airbender_cli::prover_utils::{create_final_proofs_from_program_proof, load_binary_from_path, serialize_to_file};
+use zksync_airbender_cli::prover_utils::{
+    create_final_proofs_from_program_proof, load_binary_from_path, serialize_to_file,
+};
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 use zksync_os_fri_prover::create_proof;
 use zksync_sequencer_proof_client::{ProofClient, SequencerProofClient};
-
-#[derive(Debug, Clone, ValueEnum)]
-pub enum GPUMode {
-    /// Run everything on CPU
-    #[value(name = "cpu")]
-    CPU,
-    /// Run everything but the final proof on GPU. We consider GPU to be small if it has 24GB of VRAM.
-    #[value(name = "small-gpu")]
-    SmallGPU,
-    /// Run everything on GPU. We consider GPU to be large if it has 32GB of VRAM or more.
-    #[value(name = "large-gpu")]
-    LargeGPU,
-}
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum ProverRound {
@@ -54,9 +44,6 @@ pub struct Args {
     /// Prover round
     #[command(subcommand)]
     pub round: ProverRound,
-    /// GPU mode
-    #[arg(long, default_value = "small-gpu")]
-    pub gpu_mode: GPUMode,
     /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
     #[arg(short, long, default_value = "http://localhost:3124")]
     pub base_url: String,
@@ -69,13 +56,13 @@ pub struct Args {
     /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
-    /// Directory to store the output files
+    /// Directory to store the output files for SNARK prover
     #[arg(long)]
     pub output_dir: String,
     /// Path to the trusted setup file for SNARK prover
     #[arg(long)]
     pub trusted_setup_file: Option<String>,
-    /// Number of iterations (proofs) to generate before exiting
+    /// Number of iterations (SNARK proofs) to generate before exiting
     #[arg(long)]
     pub iterations: Option<usize>,
     /// Path to the output file for FRI proofs
@@ -131,7 +118,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
             let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
             let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-            
+
             println!(
                 "Starting Zksync OS Prover Service for {}",
                 client.sequencer_url()
@@ -153,9 +140,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 let mut gpu_state = GpuSharedState::new(&binary);
 
                 // Run FRI prover until we hit one of the limits
-                while (snark_latency.elapsed().unwrap().as_secs() < max_snark_latency)
-                    && (fri_proof_count < max_fris_per_snark)
-                {
+                println!("Running FRI prover");
+                loop {
                     run_fri_prover(
                         &client,
                         &binary,
@@ -165,19 +151,29 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                         &mut fri_proof_count,
                     )
                     .await?;
+
+                    if snark_latency.elapsed().unwrap().as_secs() >= max_snark_latency {
+                        println!("SNARK latency reached max_snark_latency ({max_snark_latency} seconds), exiting FRI prover");
+                        break;
+                    } else if fri_proof_count >= max_fris_per_snark {
+                        println!("FRI proof count reached max_fris_per_snark ({max_fris_per_snark}), exiting FRI prover");
+                        break;
+                    }
                 }
 
                 // Here we do exactly one SNARK proof
+                println!("Running SNARK prover");
                 run_snark_prover(
                     &client,
                     args.output_dir.clone(),
                     args.trusted_setup_file.clone(),
-                    &mut gpu_state,
+                    gpu_state,
                     &verifier_binary,
                 )
                 .await?;
-                
+
                 // Increment SNARK proof counter
+                println!("Exiting SNARK prover");
                 snark_proof_count += 1;
                 snark_latency = SystemTime::now();
 
@@ -193,8 +189,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     }
 }
 
-async fn run_fri_prover(
-    client: &SequencerProofClient,
+async fn run_fri_prover<P: ProofClient>(
+    client: &P,
     binary: &Vec<u32>,
     circuit_limit: usize,
     gpu_state: &mut GpuSharedState,
@@ -266,15 +262,20 @@ async fn run_fri_prover(
     Ok(())
 }
 
-async fn run_snark_prover(
-    client: &SequencerProofClient,
+async fn run_snark_prover<P: ProofClient>(
+    client: &P,
     output_dir: String,
     trusted_setup_file: Option<String>,
-    gpu_state: &mut GpuSharedState,
+    gpu_state: GpuSharedState,
     verifier_binary: &Vec<u32>,
 ) -> anyhow::Result<()> {
     tracing::info!("Starting SNARK prover");
-    
+
+    #[cfg(feature = "gpu")]
+    let mut gpu_state = gpu_state;
+    #[cfg(not(feature = "gpu"))]
+    let mut gpu_state = GpuSharedState::new(&verifier_binary);
+
     loop {
         let proof_time = Instant::now();
         tracing::info!("Started picking job");
@@ -307,17 +308,30 @@ async fn run_snark_prover(
             end_block
         );
 
-        let proof = zksync_os_snark_prover::merge_fris(snark_proof_input, &verifier_binary, gpu_state);
+        let proof =
+            zksync_os_snark_prover::merge_fris(snark_proof_input, &verifier_binary, &mut gpu_state);
 
         tracing::info!("Creating final proof before SNARKification");
+        // let (proof_metadata, proof_list) = proof.to_metadata_and_proof_list();
+        // let recursion_mode = zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine;
+        // create_final_proofs(
+        //     proof_list,
+        //     proof_metadata,
+        //     recursion_mode,
+        //     &None,
+        //     &mut gpu_state,
+        //     &mut total_proof_time,
+        // );
+
         let final_proof = create_final_proofs_from_program_proof(
             proof,
             zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
-            // TODO: currently disabling GPU on final proofs, but we should have a switch in the main program
+            // TODO: currently enabled GPU on final proofs, but we should have a switch in the main program
             // that allow people to run in 3 modes:
             // - cpu only
             // - small gpu (then this is false)
             // - gpu (a.k.a large gpu) - then this is true.
+            // NOTE: use this as false, if you want to run on a small GPU
             false,
         );
 

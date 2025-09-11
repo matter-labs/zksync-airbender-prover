@@ -131,7 +131,6 @@ impl VramMonitor {
 
 mod tests {
     use super::*;
-
     #[test]
     fn test_ram_vram_usage() {
         // Start VRAM monitor (poll every 200 ms)
@@ -161,6 +160,47 @@ mod tests {
         let max_ram = linux_peak_rss_bytes().unwrap_or(0);
 
         // Print in a convenient format
+        println!(
+            "max_ram_usage: {} bytes ({} MiB)",
+            max_ram,
+            max_ram / 1024 / 1024
+        );
+        if cfg!(target_os = "linux") {
+            if max_vram > 0 {
+                println!(
+                    "max_vram_usage: {} bytes ({} MiB)",
+                    max_vram,
+                    max_vram / 1024 / 1024
+                );
+            } else {
+                if vram_available {
+                    println!("max_vram_usage: 0 bytes (0 MiB)  # process did not allocate VRAM");
+                } else {
+                    println!("max_vram_usage: 0 bytes (0 MiB)  # nvidia-smi is not available");
+                }
+            }
+        }
+    }
+
+    use crate::utils::{linux_peak_rss_bytes, VramMonitor};
+    use clap::Parser;
+    use std::time::Duration;
+
+    #[tokio::test]
+    pub async fn test_prover_service_ram_vram_usage() {
+        let args = crate::Args::parse();
+
+        let vram_mon = VramMonitor::start(Duration::from_millis(50));
+
+        let _ = crate::run(args).await;
+
+        // We profile here
+        let vram_available = vram_mon.available;
+        let max_vram = vram_mon.stop_and_get_max();
+
+        #[cfg(target_os = "linux")]
+        let max_ram = linux_peak_rss_bytes().unwrap_or(0);
+
         println!(
             "max_ram_usage: {} bytes ({} MiB)",
             max_ram,

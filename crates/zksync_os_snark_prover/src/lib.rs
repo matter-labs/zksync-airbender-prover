@@ -1,4 +1,5 @@
-pub use main::{merge_fris, deserialize_from_file, run_linking_fri_snark};
+pub use main::{deserialize_from_file, merge_fris, run_linking_fri_snark};
 
 #[path = "main.rs"]
 mod main;
+mod tests;
