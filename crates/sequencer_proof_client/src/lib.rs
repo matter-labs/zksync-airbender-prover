@@ -5,9 +5,7 @@ pub mod utils;
 use anyhow::{anyhow, Context};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
-use circuit_definitions::{
-    circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit,
-};
+use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::{fmt, future::Future};

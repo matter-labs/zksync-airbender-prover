@@ -1,9 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use std::{
-        path::Path,
-        time::Instant,
-    };
+    use std::{path::Path, time::Instant};
 
     use super::*;
     use crate::{deserialize_from_file, merge_fris};

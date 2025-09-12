@@ -21,9 +21,7 @@ impl ProofClient for FileBasedProofClient {
         self.base_dir.to_str().unwrap()
     }
 
-    async fn pick_fri_job(
-        &self,
-    ) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let block_number = 0;
         let path = self.base_dir.join("fri_job.json");
         let file = std::fs::File::open(path).context("Failed to open fri_job.json")?;
@@ -32,22 +30,15 @@ impl ProofClient for FileBasedProofClient {
         Ok(Some((block_number, fri_job)))
     }
 
-    async fn submit_fri_proof(
-        &self,
-        _block_number: u32,
-        proof: String,
-    ) -> anyhow::Result<()> {
+    async fn submit_fri_proof(&self, _block_number: u32, proof: String) -> anyhow::Result<()> {
         let path = self.base_dir.join("fri_proof.json");
-        let mut file =
-            std::fs::File::create(path).context("Failed to create fri_proof.json")?;
+        let mut file = std::fs::File::create(path).context("Failed to create fri_proof.json")?;
         serde_json::to_writer_pretty(&mut file, &proof)
             .context("Failed to write fri_proof.json")?;
         Ok(())
     }
 
-    async fn pick_snark_job(
-        &self,
-    ) -> anyhow::Result<Option<SnarkProofInputs>> {
+    async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
         let path = self.base_dir.join("snark_job.json");
         let file = std::fs::File::open(path).context("Failed to open snark_job.json")?;
         let snark_job: SnarkProofInputs =
@@ -62,8 +53,7 @@ impl ProofClient for FileBasedProofClient {
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
         let path = self.base_dir.join("snark_proof.json");
-        let mut file =
-            std::fs::File::create(path).context("Failed to create snark_proof.json")?;
+        let mut file = std::fs::File::create(path).context("Failed to create snark_proof.json")?;
         serde_json::to_writer_pretty(&mut file, &proof)
             .context("Failed to write snark_proof.json")?;
         Ok(())

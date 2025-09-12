@@ -4,9 +4,7 @@ mod tests {
 
     use crate::create_proof;
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use zksync_airbender_cli::prover_utils::{
-        load_binary_from_path, GpuSharedState,
-    };
+    use zksync_airbender_cli::prover_utils::{load_binary_from_path, GpuSharedState};
     use zksync_sequencer_proof_client::{utils::FileBasedProofClient, ProofClient};
 
     use super::*;
