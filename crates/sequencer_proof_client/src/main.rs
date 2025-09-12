@@ -1,7 +1,9 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use zkos_wrapper::SnarkWrapperProof;
-use zksync_sequencer_proof_client::{L2BlockNumber, ProofClient, SequencerProofClient};
+use zksync_sequencer_proof_client::{
+    sequencer_proof_client::SequencerProofClient, L2BlockNumber, ProofClient,
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -30,8 +32,8 @@ impl Cli {
     }
 
     /// Return sequencer client from CLI params. To be called only after `Cli::init()`.
-    fn sequencer_client<P: ProofClient>(&self) -> P {
-        P::new(
+    fn sequencer_client(&self) -> SequencerProofClient {
+        SequencerProofClient::new(
             self.url
                 .clone()
                 .expect("called sequencer_client() before init()"),
@@ -108,7 +110,7 @@ fn init_tracing(verbosity: u8) {
 async fn main() -> Result<()> {
     let cli = Cli::init()?;
 
-    let client = cli.sequencer_client::<SequencerProofClient>();
+    let client = cli.sequencer_client();
 
     let url = client.sequencer_url();
 
