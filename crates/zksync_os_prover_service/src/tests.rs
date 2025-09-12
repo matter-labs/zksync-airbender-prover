@@ -5,9 +5,7 @@ mod tests {
         time::{Instant, SystemTime},
     };
 
-    use super::*;
     use crate::{run_fri_prover, run_snark_prover};
-    use zkos_wrapper::prove;
     use zksync_airbender_cli::prover_utils::{load_binary_from_path, GpuSharedState};
     use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
     use zksync_sequencer_proof_client::{utils::FileBasedProofClient, ProofClient};

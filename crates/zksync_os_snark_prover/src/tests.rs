@@ -2,7 +2,7 @@
 mod tests {
     use std::{
         path::Path,
-        time::{Instant, SystemTime},
+        time::Instant,
     };
 
     use super::*;
