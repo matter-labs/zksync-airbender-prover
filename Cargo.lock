@@ -4899,6 +4899,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "zksync_sequencer_proof_client",
 ]
 

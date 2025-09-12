@@ -13,30 +13,10 @@ use zksync_airbender_cli::prover_utils::{
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
 
-/// Command-line arguments for the Zksync OS prover
-#[derive(Parser, Debug)]
-#[command(name = "Zksync OS Prover")]
-#[command(version = "1.0")]
-#[command(about = "Prover for Zksync OS", long_about = None)]
-pub struct Args {
-    /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
-    #[arg(short, long, default_value = "http://localhost:3124")]
-    pub base_url: String,
-    /// Enable logging and use the logging-enabled binary
-    #[arg(long)]
-    pub enabled_logging: bool,
-    /// Path to `app.bin`
-    #[arg(long)]
-    pub app_bin_path: Option<PathBuf>,
-    /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
-    #[arg(long, default_value = "10000")]
-    pub circuit_limit: usize,
-    /// Number of iterations (proofs) to generate before exiting. If not specified, runs indefinitely
-    #[arg(long)]
-    pub iterations: Option<usize>,
-    /// Path to the output file
-    #[arg(short, long)]
-    pub path: Option<PathBuf>,
+
+pub fn init_tracing() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
 pub fn create_proof(
@@ -75,6 +55,7 @@ pub fn create_proof(
 }
 
 pub async fn run(args: Args) {
+    init_tracing();
     tracing::info!(
         "running without logging, disregarding enabled_logging flag = {}",
         args.enabled_logging
