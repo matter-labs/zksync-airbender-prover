@@ -15,7 +15,6 @@ use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERI
 use zksync_os_fri_prover::create_proof;
 use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
 
-
 pub fn init_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     FmtSubscriber::builder().with_env_filter(filter).init();

@@ -1,6 +1,5 @@
 use clap::Parser;
 
-
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
