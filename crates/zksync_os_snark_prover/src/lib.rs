@@ -205,7 +205,7 @@ pub async fn run_inner<P: ProofClient>(
         end_block
     );
 
-    let proof = merge_fris(snark_proof_input, &verifier_binary, gpu_state);
+    let proof = merge_fris(snark_proof_input, verifier_binary, gpu_state);
 
     // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
     #[cfg(feature = "gpu")]

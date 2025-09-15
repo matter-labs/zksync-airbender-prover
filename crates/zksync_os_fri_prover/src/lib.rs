@@ -171,7 +171,7 @@ pub async fn run_inner<P: ProofClient>(
         block_number
     );
 
-    let proof = create_proof(prover_input, &binary, circuit_limit, gpu_state);
+    let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
 
     tracing::info!(
         "{:?} finished proving block number {}",
