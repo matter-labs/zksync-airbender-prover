@@ -170,7 +170,7 @@ pub async fn run_linking_fri_snark(
 pub async fn run_inner<P: ProofClient>(
     client: &P,
     verifier_binary: &Vec<u32>,
-    gpu_state: &mut GpuSharedState,
+    gpu_state: &mut GpuSharedState<'_>,
     output_dir: String,
     trusted_setup_file: Option<String>,
 ) -> anyhow::Result<bool> {

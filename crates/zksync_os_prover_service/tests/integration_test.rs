@@ -5,8 +5,8 @@ use std::{
 
 use zksync_airbender_cli::prover_utils::{load_binary_from_path, GpuSharedState};
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
-use zksync_os_prover_service::{run_fri_prover, run_snark_prover};
-use zksync_sequencer_proof_client::{file_based_proof_client::FileBasedProofClient, ProofClient};
+// use zksync_os_prover_service::{run_fri_prover, run_snark_prover};
+use zksync_sequencer_proof_client::file_based_proof_client::FileBasedProofClient;
 
 #[tokio::test]
 async fn test_e2e_prover_service() {
@@ -18,8 +18,8 @@ async fn test_e2e_prover_service() {
     // RUST_MIN_STACK=41943040 cargo test test_e2e_prover_service --release -- --nocapture
 
     // Arguments:
-    let max_snark_latency = 600;
-    let max_fris_per_snark = 2;
+    let max_snark_latency = Some(600);
+    let max_fris_per_snark = Some(2);
     let circuit_limit = 10000;
     let iterations = Some(2);
     let fri_path = Some(PathBuf::from("../../outputs/fri_proof.json"));
@@ -63,42 +63,55 @@ async fn test_e2e_prover_service() {
         // Run FRI prover until we hit one of the limits
         tracing::info!("Running FRI prover");
         loop {
-            run_fri_prover(
+            let success = zksync_os_fri_prover::run_inner(
                 &client,
                 &binary,
                 circuit_limit,
                 &mut gpu_state,
                 fri_path.clone(),
-                &mut fri_proof_count,
             )
             .await
-            .unwrap();
+            .expect("Failed to run FRI prover");
 
-            if snark_latency.elapsed().unwrap().as_secs() >= max_snark_latency {
-                tracing::info!("SNARK latency reached max_snark_latency ({max_snark_latency} seconds), exiting FRI prover");
-                break;
-            } else if fri_proof_count >= max_fris_per_snark {
-                tracing::info!("FRI proof count reached max_fris_per_snark ({max_fris_per_snark}), exiting FRI prover");
-                break;
+            if success {
+                fri_proof_count += 1;
+            }
+
+            if let Some(max_snark_latency) = max_snark_latency {
+                if snark_latency.elapsed().unwrap().as_secs() >= max_snark_latency {
+                    tracing::info!("SNARK latency reached max_snark_latency ({max_snark_latency} seconds), exiting FRI prover");
+                    break;
+                }
+            }
+            if let Some(max_fris_per_snark) = max_fris_per_snark {
+                if fri_proof_count >= max_fris_per_snark {
+                    tracing::info!("FRI proof count reached max_fris_per_snark ({max_fris_per_snark}), exiting FRI prover");
+                    break;
+                }
             }
         }
 
         // Here we do exactly one SNARK proof
         tracing::info!("Running SNARK prover");
-        run_snark_prover(
-            &client,
-            output_dir.clone(),
-            trusted_setup_file.clone(),
-            gpu_state,
-            &verifier_binary,
-        )
-        .await
-        .unwrap();
+        loop {
+            let success = zksync_os_snark_prover::run_inner(
+                &client,
+                &verifier_binary,
+                &mut gpu_state,
+                output_dir.clone(),
+                trusted_setup_file.clone(),
+            )
+            .await
+            .expect("Failed to run SNARK prover");
 
-        // Increment SNARK proof counter
-        tracing::info!("Exiting SNARK prover");
-        snark_proof_count += 1;
-        snark_latency = SystemTime::now();
+            if success {
+                // Increment SNARK proof counter
+                tracing::info!("Successfully run SNARK prover");
+                snark_proof_count += 1;
+                snark_latency = SystemTime::now();
+                break;
+            }
+        }
 
         // Check if we've reached the iteration limit
         if let Some(max_iterations) = iterations {

@@ -1,11 +1,6 @@
-use std::{path::Path, time::Instant};
-
-use zkos_wrapper::{prove, SnarkWrapperProof};
-use zksync_airbender_cli::prover_utils::{
-    create_final_proofs_from_program_proof, serialize_to_file, GpuSharedState,
-};
+use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
-use zksync_os_snark_prover::{deserialize_from_file, merge_fris, run_inner};
+use zksync_os_snark_prover::run_inner;
 use zksync_sequencer_proof_client::file_based_proof_client::FileBasedProofClient;
 
 #[tokio::test]

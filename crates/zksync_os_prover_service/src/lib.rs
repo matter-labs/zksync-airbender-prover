@@ -1,19 +1,17 @@
 use std::{
     path::{Path, PathBuf},
-    time::{Instant, SystemTime},
+    time::SystemTime,
 };
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use clap::{Parser, Subcommand};
-use zkos_wrapper::{prove, SnarkWrapperProof};
+use clap::Parser;
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use zksync_airbender_cli::prover_utils::load_binary_from_path;
+#[cfg(not(feature = "gpu"))]
+use zksync_airbender_cli::prover_utils::GpuSharedState;
 #[cfg(feature = "gpu")]
 use zksync_airbender_cli::prover_utils::GpuSharedState;
-use zksync_airbender_cli::prover_utils::{
-    create_final_proofs_from_program_proof, load_binary_from_path, serialize_to_file,
-};
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
-use zksync_os_fri_prover::create_proof;
-use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
+use zksync_sequencer_proof_client::sequencer_proof_client::SequencerProofClient;
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -135,7 +133,7 @@ pub async fn run(args: Args) {
             let success = zksync_os_snark_prover::run_inner(
                 &client,
                 &verifier_binary,
-                gpu_state,
+                &mut gpu_state,
                 args.output_dir.clone(),
                 args.trusted_setup_file.clone(),
             )
