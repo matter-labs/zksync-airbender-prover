@@ -2,10 +2,11 @@ use std::{
     path::{Path, PathBuf},
     time::SystemTime,
 };
-
+use anyhow::anyhow;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
@@ -74,6 +75,12 @@ fn create_proof(
     ProgramProof::from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct NextFriProverJobPayload {
+    block_number: u32,
+    prover_input: String, // base64-encoded
+}
+
 pub async fn run(args: Args) {
     println!(
         "running without logging, disregarding enabled_logging flag = {}",
@@ -108,19 +115,26 @@ pub async fn run(args: Args) {
     let mut proof_count = 0;
 
     loop {
-        let (block_number, prover_input) = match client.pick_fri_job().await {
-            Err(err) => {
-                eprintln!("Error fetching next prover job: {err}");
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                continue;
-            }
-            Ok(Some(next_block)) => next_block,
-            Ok(None) => {
-                println!("No pending blocks to prove, retrying in 100ms...");
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                continue;
-            }
-        };
+        // let (block_number, prover_input) = match client.pick_fri_job().await {
+        //     Err(err) => {
+        //         eprintln!("Error fetching next prover job: {err}");
+        //         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        //         continue;
+        //     }
+        //     Ok(Some(next_block)) => next_block,
+        //     Ok(None) => {
+        //         println!("No pending blocks to prove, retrying in 100ms...");
+        //         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        //         continue;
+        //     }
+        // };
+
+        let NextFriProverJobPayload {block_number, prover_input} = deserialize_from_file("./proof_input.json");
+        let prover_input = STANDARD
+            .decode(&prover_input)
+            .map_err(|e| anyhow!("Failed to decode block data: {}", e)).unwrap();
+
+        // (block_number, prover_input)
 
         // make prover_input (Vec<u8>) into Vec<u32>:
         let prover_input: Vec<u32> = prover_input
@@ -135,6 +149,9 @@ pub async fn run(args: Args) {
         );
 
         let proof = create_proof(prover_input, &binary, args.circuit_limit, &mut gpu_state);
+        if let Some(ref path) = args.path {
+            serialize_to_file(&proof, &path.with_extension("proof.json"));
+        }
 
         // Increment proof counter after creating proof, regardless of submission success
         proof_count += 1;
@@ -154,22 +171,22 @@ pub async fn run(args: Args) {
         if let Some(ref path) = args.path {
             serialize_to_file(&proof_b64, path);
         }
-
-        match client.submit_fri_proof(block_number, proof_b64).await {
-            Ok(_) => println!(
-                "{:?} successfully submitted proof for block number {}",
-                SystemTime::now(),
-                block_number
-            ),
-            Err(err) => {
-                eprintln!(
-                    "{:?} failed to submit proof for block number {}: {}",
-                    SystemTime::now(),
-                    block_number,
-                    err
-                );
-            }
-        }
+        return;
+        // match client.submit_fri_proof(block_number, proof_b64).await {
+        //     Ok(_) => println!(
+        //         "{:?} successfully submitted proof for block number {}",
+        //         SystemTime::now(),
+        //         block_number
+        //     ),
+        //     Err(err) => {
+        //         eprintln!(
+        //             "{:?} failed to submit proof for block number {}: {}",
+        //             SystemTime::now(),
+        //             block_number,
+        //             err
+        //         );
+        //     }
+        // }
 
         // Check if we've reached the iteration limit
         if let Some(max_iterations) = args.iterations {
@@ -179,4 +196,10 @@ pub async fn run(args: Args) {
             }
         }
     }
+}
+
+fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
+    println!("filename = {}", filename);
+    let src = std::fs::File::open(filename).expect("file should be present");
+    serde_json::from_reader(src).unwrap()
 }
