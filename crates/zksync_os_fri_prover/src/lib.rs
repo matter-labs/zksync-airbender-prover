@@ -75,11 +75,6 @@ fn create_proof(
 }
 
 pub async fn run(args: Args) {
-    println!(
-        "running without logging, disregarding enabled_logging flag = {}",
-        args.enabled_logging
-    );
-
     let client = SequencerProofClient::new(args.base_url);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -87,9 +82,18 @@ pub async fn run(args: Args) {
     } else {
         ".".to_string()
     };
-    let binary_path = args
-        .app_bin_path
-        .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
+
+    let binary_path = match (args.app_bin_path, args.enabled_logging) {
+        (Some(_), true) => {
+            panic!("Cannot use both --enabled-logging and --app-bin-path - choose one!")
+        }
+        (Some(path), false) => path,
+        (None, true) => {
+            Path::new(&manifest_path).join("../../multiblock_batch_logging_enabled.bin")
+        }
+        (None, false) => Path::new(&manifest_path).join("../../multiblock_batch.bin"),
+    };
+
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
     // For regular fri proving, we keep using reduced RiscV machine.
     #[cfg(feature = "gpu")]
@@ -101,8 +105,9 @@ pub async fn run(args: Args) {
     let mut gpu_state = GpuSharedState::new(&binary);
 
     println!(
-        "Starting Zksync OS FRI prover for {}",
-        client.sequencer_url()
+        "Starting Zksync OS FRI prover for {} with RISCV binary path {:?}",
+        client.sequencer_url(),
+        binary_path
     );
 
     let mut proof_count = 0;
