@@ -240,7 +240,7 @@ fn compute_compression_vk(binary_path: String) -> CompressionVK {
 }
 
 async fn run_linking_fri_snark(
-    binary_path: String,
+    _binary_path: String,
     sequencer_url: Option<String>,
     output_dir: String,
     trusted_setup_file: String,
@@ -255,7 +255,7 @@ async fn run_linking_fri_snark(
     #[cfg(feature = "gpu")]
     let precomputations = {
         tracing::info!("Computing SNARK precomputations");
-        let compression_vk = compute_compression_vk(binary_path);
+        let compression_vk = compute_compression_vk(_binary_path);
         let precomputations = gpu_create_snark_setup_data(compression_vk, &trusted_setup_file);
         tracing::info!("Finished computing SNARK precomputations");
         precomputations
