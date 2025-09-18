@@ -3,13 +3,21 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 #[cfg(feature = "gpu")]
-use zkos_wrapper::{gpu::{snark::gpu_create_snark_setup_data, compression::get_compression_setup}, generate_risk_wrapper_vk, BoojumWorker, CompressionVK};
+use zkos_wrapper::{
+    generate_risk_wrapper_vk,
+    gpu::{compression::get_compression_setup, snark::gpu_create_snark_setup_data},
+    BoojumWorker, CompressionVK,
+};
+use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
 };
-use zksync_airbender_execution_utils::{generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list, get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers, UNIVERSAL_CIRCUIT_VERIFIER};
+use zksync_airbender_execution_utils::{
+    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
+    get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
+    UNIVERSAL_CIRCUIT_VERIFIER,
+};
 use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
@@ -224,10 +232,10 @@ fn compute_compression_vk(binary_path: String) -> CompressionVK {
         true,
         RecursionStrategy::UseReducedLog23Machine,
         &worker,
-    ).unwrap();
+    )
+    .unwrap();
 
-    let (_, compression_vk, _) =
-        get_compression_setup(&worker, risc_wrapper_vk);
+    let (_, compression_vk, _) = get_compression_setup(&worker, risc_wrapper_vk);
     compression_vk
 }
 
