@@ -4,14 +4,12 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
+#[cfg(feature = "gpu")]
+use zkos_wrapper::{gpu::{snark::gpu_create_snark_setup_data, compression::get_compression_setup}, generate_risk_wrapper_vk, BoojumWorker, CompressionVK};
 use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
 };
-use zksync_airbender_execution_utils::{
-    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
-    get_padded_binary, Machine, ProgramProof, VerifierCircuitsIdentifiers,
-    UNIVERSAL_CIRCUIT_VERIFIER,
-};
+use zksync_airbender_execution_utils::{generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list, get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers, UNIVERSAL_CIRCUIT_VERIFIER};
 use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
@@ -23,7 +21,7 @@ pub struct SetupOptions {
     output_dir: String,
 
     #[arg(long)]
-    trusted_setup_file: Option<String>,
+    trusted_setup_file: String,
 }
 
 #[derive(Parser)]
@@ -66,13 +64,13 @@ fn init_tracing() {
 fn generate_verification_key(
     binary_path: String,
     output_dir: String,
-    trusted_setup_file: Option<String>,
+    trusted_setup_file: String,
     vk_verification_key_file: Option<String>,
 ) {
     match zkos_wrapper::generate_vk(
         Some(binary_path),
         output_dir,
-        trusted_setup_file,
+        Some(trusted_setup_file),
         true,
         zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
     ) {
@@ -113,7 +111,7 @@ fn main() {
             sequencer_url,
             setup:
                 SetupOptions {
-                    binary_path: _,
+                    binary_path,
                     output_dir,
                     trusted_setup_file,
                 },
@@ -131,6 +129,7 @@ fn main() {
                 .expect("failed to build tokio context");
             runtime
                 .block_on(run_linking_fri_snark(
+                    binary_path,
                     sequencer_url,
                     output_dir,
                     trusted_setup_file,
@@ -216,10 +215,27 @@ fn merge_fris(
     proof
 }
 
+#[cfg(feature = "gpu")]
+fn compute_compression_vk(binary_path: String) -> CompressionVK {
+    let worker = BoojumWorker::new();
+
+    let risc_wrapper_vk = generate_risk_wrapper_vk(
+        Some(binary_path),
+        true,
+        RecursionStrategy::UseReducedLog23Machine,
+        &worker,
+    ).unwrap();
+
+    let (_, compression_vk, _) =
+        get_compression_setup(&worker, risc_wrapper_vk);
+    compression_vk
+}
+
 async fn run_linking_fri_snark(
+    binary_path: String,
     sequencer_url: Option<String>,
     output_dir: String,
-    trusted_setup_file: Option<String>,
+    trusted_setup_file: String,
     iterations: Option<usize>,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
@@ -228,16 +244,18 @@ async fn run_linking_fri_snark(
     tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
+    #[cfg(feature = "gpu")]
+    let precomputations = {
+        tracing::info!("Computing SNARK precomputations");
+        let compression_vk = compute_compression_vk(binary_path);
+        let precomputations = gpu_create_snark_setup_data(compression_vk, &trusted_setup_file);
+        tracing::info!("Finished computing SNARK precomputations");
+        precomputations
+    };
+
     let mut proof_count = 0;
 
     loop {
-        #[cfg(feature = "gpu")]
-        let mut gpu_state = GpuSharedState::new(
-            &verifier_binary,
-            zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-        );
-        #[cfg(not(feature = "gpu"))]
-        let mut gpu_state = GpuSharedState::new(&verifier_binary);
         let proof_time = Instant::now();
         tracing::info!("Started picking job");
         let snark_proof_input = match sequencer_client.pick_snark_job().await {
@@ -268,7 +286,15 @@ async fn run_linking_fri_snark(
             start_block,
             end_block
         );
-
+        tracing::info!("Initializing GPU state");
+        #[cfg(feature = "gpu")]
+        let mut gpu_state = GpuSharedState::new(
+            &verifier_binary,
+            zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+        );
+        #[cfg(not(feature = "gpu"))]
+        let mut gpu_state = GpuSharedState::new(&verifier_binary);
+        tracing::info!("Finished initializing GPU state");
         let proof = merge_fris(snark_proof_input, &verifier_binary, &mut gpu_state);
 
         // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
@@ -278,7 +304,7 @@ async fn run_linking_fri_snark(
         tracing::info!("Creating final proof before SNARKification");
         let final_proof = create_final_proofs_from_program_proof(
             proof,
-            zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
+            RecursionStrategy::UseReducedLog23Machine,
             // TODO: currently enabled GPU on final proofs, but we should have a switch in the main program
             // that allow people to run in 3 modes:
             // - cpu only
@@ -298,10 +324,10 @@ async fn run_linking_fri_snark(
         match prove(
             one_fri_path.into_os_string().into_string().unwrap(),
             output_dir.clone(),
-            trusted_setup_file.clone(),
+            Some(trusted_setup_file.clone()),
             false,
-            // TODO: for GPU, we might want to create 'setup' file, and then pass it here for faster running.
-            None,
+            #[cfg(feature = "gpu")]
+            Some(precomputations.clone()),
         ) {
             Ok(()) => {
                 tracing::info!(
