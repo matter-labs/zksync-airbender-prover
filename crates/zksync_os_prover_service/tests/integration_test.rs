@@ -7,6 +7,10 @@ use zksync_airbender_cli::prover_utils::{load_binary_from_path, GpuSharedState};
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 use zksync_os_prover_service::init_tracing;
 // use zksync_os_prover_service::{run_fri_prover, run_snark_prover};
+#[cfg(feature = "gpu")]
+use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
+#[cfg(feature = "gpu")]
+use zksync_os_snark_prover::compute_compression_vk;
 use zksync_sequencer_proof_client::file_based_proof_client::FileBasedProofClient;
 
 #[tokio::test]
@@ -26,7 +30,7 @@ async fn test_e2e_prover_service() {
     let fri_path = Some(PathBuf::from("../../outputs/fri_proof.json"));
 
     let output_dir: String = "../../outputs".to_string();
-    let trusted_setup_file: Option<String> = Some("../../crs/setup_compact.key".to_string());
+    let trusted_setup_file: String = "../../crs/setup_compact.key".to_string();
 
     init_tracing();
     let client = FileBasedProofClient::default();
@@ -43,6 +47,16 @@ async fn test_e2e_prover_service() {
         .to_string();
     let binary = load_binary_from_path(&binary_path);
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+
+    #[cfg(feature = "gpu")]
+    let precomputations = {
+        tracing::info!("Computing SNARK precomputations");
+        let compression_vk = compute_compression_vk(binary_path);
+        let precomputations =
+            gpu_create_snark_setup_data(compression_vk, &trusted_setup_file.clone());
+        tracing::info!("Finished computing SNARK precomputations");
+        precomputations
+    };
 
     tracing::info!("Starting Zksync OS Prover Service test");
     let proof_time = Instant::now();
@@ -103,6 +117,8 @@ async fn test_e2e_prover_service() {
                 &verifier_binary,
                 output_dir.clone(),
                 trusted_setup_file.clone(),
+                #[cfg(feature = "gpu")]
+                precomputations.clone(),
             )
             .await
             .expect("Failed to run SNARK prover");

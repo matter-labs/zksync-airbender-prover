@@ -17,6 +17,7 @@ zksync_sequencer_proof_client = { path = "../sequencer_proof_client" }
 zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
 zkos_wrapper.workspace = true
+proof-compression.workspace = true
 
 #zksync_task_management = { path = "../core/lib/task_management" }
 #proof_cache = { path = "../proof_cache" }

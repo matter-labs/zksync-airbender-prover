@@ -1,4 +1,10 @@
+use std::path::Path;
+
+#[cfg(feature = "gpu")]
+use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
+#[cfg(feature = "gpu")]
+use zksync_os_snark_prover::compute_compression_vk;
 use zksync_os_snark_prover::{init_tracing, run_inner};
 use zksync_sequencer_proof_client::{
     file_based_proof_client::FileBasedProofClient, sequencer_proof_client::SequencerProofClient,
@@ -15,9 +21,28 @@ async fn test_snark_prover() {
 
     init_tracing();
     let output_dir: String = "../../outputs".to_string();
-    let trusted_setup_file: Option<String> = Some("../../crs/setup_compact.key".to_string());
+    let trusted_setup_file: String = "../../crs/setup_compact.key".to_string();
     let client = FileBasedProofClient::default();
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+    let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
+        manifest_path
+    } else {
+        ".".to_string()
+    };
+    let _binary_path = Path::new(&manifest_path)
+        .join("../../multiblock_batch.bin")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    #[cfg(feature = "gpu")]
+    let precomputations = {
+        tracing::info!("Computing SNARK precomputations");
+        let compression_vk = compute_compression_vk(_binary_path);
+        let precomputations = gpu_create_snark_setup_data(compression_vk, &trusted_setup_file);
+        tracing::info!("Finished computing SNARK precomputations");
+        precomputations
+    };
 
     tracing::info!("Starting Zksync OS SNARK prover test");
 
@@ -26,6 +51,8 @@ async fn test_snark_prover() {
         &verifier_binary,
         output_dir.clone(),
         trusted_setup_file.clone(),
+        #[cfg(feature = "gpu")]
+        precomputations.clone(),
     )
     .await
     .expect("Failed to run SNARK prover");

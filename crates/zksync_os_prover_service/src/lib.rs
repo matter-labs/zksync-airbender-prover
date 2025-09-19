@@ -5,12 +5,16 @@ use std::{
 
 use clap::Parser;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+#[cfg(feature = "gpu")]
+use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
 use zksync_airbender_cli::prover_utils::load_binary_from_path;
 #[cfg(not(feature = "gpu"))]
 use zksync_airbender_cli::prover_utils::GpuSharedState;
 #[cfg(feature = "gpu")]
 use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
+#[cfg(feature = "gpu")]
+use zksync_os_snark_prover::compute_compression_vk;
 use zksync_sequencer_proof_client::sequencer_proof_client::SequencerProofClient;
 
 /// Command-line arguments for the Zksync OS prover
@@ -42,7 +46,7 @@ pub struct Args {
     pub output_dir: String,
     /// Path to the trusted setup file for SNARK prover
     #[arg(long)]
-    pub trusted_setup_file: Option<String>,
+    pub trusted_setup_file: String,
     /// Number of iterations (SNARK proofs) to generate before exiting
     #[arg(long)]
     pub iterations: Option<usize>,
@@ -75,6 +79,15 @@ pub async fn run(args: Args) {
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+
+    #[cfg(feature = "gpu")]
+    let precomputations = {
+        tracing::info!("Computing SNARK precomputations");
+        let compression_vk = compute_compression_vk(binary_path.to_str().unwrap().to_string());
+        let precomputations = gpu_create_snark_setup_data(compression_vk, &args.trusted_setup_file);
+        tracing::info!("Finished computing SNARK precomputations");
+        precomputations
+    };
 
     tracing::info!(
         "Starting Zksync OS Prover Service for {}",
@@ -137,6 +150,8 @@ pub async fn run(args: Args) {
                 &verifier_binary,
                 args.output_dir.clone(),
                 args.trusted_setup_file.clone(),
+                #[cfg(feature = "gpu")]
+                precomputations.clone(),
             )
             .await
             .expect("Failed to run SNARK prover");

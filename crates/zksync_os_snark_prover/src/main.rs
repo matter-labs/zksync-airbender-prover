@@ -11,7 +11,7 @@ pub struct SetupOptions {
     output_dir: String,
 
     #[arg(long)]
-    trusted_setup_file: Option<String>,
+    trusted_setup_file: String,
 }
 
 #[derive(Parser)]
@@ -69,7 +69,7 @@ fn main() {
             sequencer_url,
             setup:
                 SetupOptions {
-                    binary_path: _,
+                    binary_path,
                     output_dir,
                     trusted_setup_file,
                 },
@@ -87,6 +87,7 @@ fn main() {
                 .expect("failed to build tokio context");
             runtime
                 .block_on(run_linking_fri_snark(
+                    binary_path,
                     sequencer_url,
                     output_dir,
                     trusted_setup_file,
