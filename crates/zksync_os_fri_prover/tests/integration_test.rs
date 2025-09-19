@@ -46,6 +46,7 @@ async fn test_fri_prover() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn serialize_fri_job() {
     init_tracing();
     let client = SequencerProofClient::new("http://localhost:3124".to_string());

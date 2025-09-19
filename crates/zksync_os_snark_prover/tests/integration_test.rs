@@ -60,6 +60,7 @@ async fn test_snark_prover() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn serialize_snark_job() {
     init_tracing();
     let client = SequencerProofClient::new("http://localhost:3124".to_string());
