@@ -6,12 +6,15 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
+use tracing_subscriber::{fmt, EnvFilter};
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::SequencerProofClient;
+
+mod metrics;
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -37,6 +40,9 @@ pub struct Args {
     /// Path to the output file
     #[arg(short, long)]
     pub path: Option<PathBuf>,
+    /// Port to run the Prometheus metrics server on
+    #[arg(long, default_value = "3312")]
+    pub prometheus_port: u16,
 }
 
 fn create_proof(
@@ -75,10 +81,13 @@ fn create_proof(
 }
 
 pub async fn run(args: Args) {
-    println!(
-        "running without logging, disregarding enabled_logging flag = {}",
-        args.enabled_logging
-    );
+    if args.enabled_logging {
+        let env_filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+        fmt::Subscriber::builder()
+            .with_env_filter(env_filter)
+            .init();
+    }
 
     let client = SequencerProofClient::new(args.base_url);
 
@@ -100,7 +109,7 @@ pub async fn run(args: Args) {
     #[cfg(not(feature = "gpu"))]
     let mut gpu_state = GpuSharedState::new(&binary);
 
-    println!(
+    tracing::info!(
         "Starting Zksync OS FRI prover for {}",
         client.sequencer_url()
     );
@@ -110,13 +119,13 @@ pub async fn run(args: Args) {
     loop {
         let (block_number, prover_input) = match client.pick_fri_job().await {
             Err(err) => {
-                eprintln!("Error fetching next prover job: {err}");
+                tracing::error!("Error fetching next prover job: {err}");
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 continue;
             }
             Ok(Some(next_block)) => next_block,
             Ok(None) => {
-                println!("No pending blocks to prove, retrying in 100ms...");
+                tracing::debug!("No pending blocks to prove, retrying in 100ms...");
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 continue;
             }
@@ -128,7 +137,7 @@ pub async fn run(args: Args) {
             .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
             .collect();
 
-        println!(
+        tracing::info!(
             "{:?} starting proving block number {}",
             SystemTime::now(),
             block_number
@@ -139,7 +148,7 @@ pub async fn run(args: Args) {
         // Increment proof counter after creating proof, regardless of submission success
         proof_count += 1;
 
-        println!(
+        tracing::info!(
             "{:?} finished proving block number {}",
             SystemTime::now(),
             block_number
@@ -156,13 +165,13 @@ pub async fn run(args: Args) {
         }
 
         match client.submit_fri_proof(block_number, proof_b64).await {
-            Ok(_) => println!(
+            Ok(_) => tracing::info!(
                 "{:?} successfully submitted proof for block number {}",
                 SystemTime::now(),
                 block_number
             ),
             Err(err) => {
-                eprintln!(
+                tracing::error!(
                     "{:?} failed to submit proof for block number {}: {}",
                     SystemTime::now(),
                     block_number,
@@ -174,7 +183,7 @@ pub async fn run(args: Args) {
         // Check if we've reached the iteration limit
         if let Some(max_iterations) = args.iterations {
             if proof_count >= max_iterations {
-                println!("Reached maximum iterations ({max_iterations}), exiting...",);
+                tracing::info!("Reached maximum iterations ({max_iterations}), exiting...");
                 break;
             }
         }

@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, Instant};
+use tokio::sync::watch;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 #[cfg(feature = "gpu")]
 use zkos_wrapper::{
@@ -19,6 +20,8 @@ use zksync_airbender_execution_utils::{
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
+
+mod metrics;
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -61,6 +64,9 @@ enum Commands {
         /// Number of iterations (proofs) to generate before exiting. If not specified, runs indefinitely
         #[arg(long)]
         iterations: Option<usize>,
+        /// Port to run the Prometheus metrics server on
+        #[arg(long, default_value = "3312")]
+        prometheus_port: u16,
     },
 }
 
@@ -125,6 +131,7 @@ fn main() {
                 },
             // mode,
             iterations,
+            prometheus_port,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -135,15 +142,27 @@ fn main() {
                 .enable_all()
                 .build()
                 .expect("failed to build tokio context");
-            runtime
-                .block_on(run_linking_fri_snark(
-                    binary_path,
-                    sequencer_url,
-                    output_dir,
-                    trusted_setup_file,
-                    iterations,
-                ))
-                .expect("failed whilst running SNARK prover");
+
+            let (stop_sender, stop_receiver) = watch::channel(false);
+
+            runtime.block_on(async move {
+                tokio::select! {
+                     result = run_linking_fri_snark(
+                       binary_path,
+                       sequencer_url,
+                       output_dir,
+                       trusted_setup_file,
+                       iterations,
+                    ) => {
+                        tracing::info!("SNARK prover finished");
+                        result.expect("SNARK prover finished with error");
+                        stop_sender.send(true).expect("failed to send stop signal");
+                    }
+                    _ = metrics::start_metrics_exporter(prometheus_port, stop_receiver) => {
+                        tracing::info!("Metrics exporter finished");
+                    }
+                }
+            });
         }
     }
 }
