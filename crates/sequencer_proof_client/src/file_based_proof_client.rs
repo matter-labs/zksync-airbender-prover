@@ -12,13 +12,13 @@ use crate::{
 
 #[derive(Debug)]
 pub struct FileBasedProofClient {
-    base_dir: PathBuf,
+    pub base_dir: PathBuf,
 }
 
 impl Default for FileBasedProofClient {
     fn default() -> Self {
         Self {
-            base_dir: PathBuf::from("./test_data"),
+            base_dir: PathBuf::from("../../test_data/"),
         }
     }
 }
@@ -36,6 +36,49 @@ impl FileBasedProofClient {
         serde_json::to_writer_pretty(&mut file, &proof)
             .context("Failed to write snark_proof.json")?;
         Ok(String::new())
+    }
+
+    pub fn serialize_fri_job(
+        &self,
+        block_number: u32,
+        prover_input: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        let path = self.base_dir.join("fri_job.json");
+        let mut file = std::fs::File::create(path).context("Failed to create fri_job.json")?;
+        serde_json::to_writer_pretty(
+            &mut file,
+            &NextFriProverJobPayload {
+                block_number,
+                prover_input: STANDARD.encode(&prover_input),
+            },
+        )
+        .context("Failed to write fri_job.json")?;
+        Ok(())
+    }
+
+    pub fn serialize_snark_job(&self, snark_proof_inputs: SnarkProofInputs) -> anyhow::Result<()> {
+        let path = self.base_dir.join("snark_job.json");
+        let mut file = std::fs::File::create(path).context("Failed to create snark_job.json")?;
+        let fri_proofs = snark_proof_inputs
+            .fri_proofs
+            .iter()
+            .map(|proof| {
+                let proof_bytes: Vec<u8> =
+                    bincode::serde::encode_to_vec(proof, bincode::config::standard())
+                        .expect("failed to bincode-serialize proof");
+                STANDARD.encode(&proof_bytes)
+            })
+            .collect::<Vec<String>>();
+        serde_json::to_writer_pretty(
+            &mut file,
+            &GetSnarkProofPayload {
+                block_number_from: snark_proof_inputs.from_block_number.0 as u64,
+                block_number_to: snark_proof_inputs.to_block_number.0 as u64,
+                fri_proofs,
+            },
+        )
+        .context("Failed to write snark_job.json")?;
+        Ok(())
     }
 }
 

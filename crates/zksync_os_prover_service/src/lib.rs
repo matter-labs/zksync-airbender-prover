@@ -126,6 +126,8 @@ pub async fn run(args: Args) {
                 }
             }
         }
+        #[cfg(feature = "gpu")]
+        drop(gpu_state);
 
         // Here we do exactly one SNARK proof
         tracing::info!("Running SNARK prover");
@@ -133,7 +135,6 @@ pub async fn run(args: Args) {
             let success = zksync_os_snark_prover::run_inner(
                 &client,
                 &verifier_binary,
-                &mut gpu_state,
                 args.output_dir.clone(),
                 args.trusted_setup_file.clone(),
             )

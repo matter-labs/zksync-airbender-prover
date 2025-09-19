@@ -5,6 +5,7 @@ use std::{
 
 use zksync_airbender_cli::prover_utils::{load_binary_from_path, GpuSharedState};
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
+use zksync_os_prover_service::init_tracing;
 // use zksync_os_prover_service::{run_fri_prover, run_snark_prover};
 use zksync_sequencer_proof_client::file_based_proof_client::FileBasedProofClient;
 
@@ -18,16 +19,17 @@ async fn test_e2e_prover_service() {
     // RUST_MIN_STACK=41943040 cargo test test_e2e_prover_service --release -- --nocapture
 
     // Arguments:
-    let max_snark_latency = Some(600);
-    let max_fris_per_snark = Some(2);
+    let max_snark_latency = None;
+    let max_fris_per_snark = Some(1);
     let circuit_limit = 10000;
-    let iterations = Some(2);
+    let iterations = Some(1);
     let fri_path = Some(PathBuf::from("../../outputs/fri_proof.json"));
 
     let output_dir: String = "../../outputs".to_string();
     let trusted_setup_file: Option<String> = Some("../../crs/setup_compact.key".to_string());
 
-    let client = FileBasedProofClient::new("../../".to_string());
+    init_tracing();
+    let client = FileBasedProofClient::default();
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -90,6 +92,8 @@ async fn test_e2e_prover_service() {
                 }
             }
         }
+        #[cfg(feature = "gpu")]
+        drop(gpu_state);
 
         // Here we do exactly one SNARK proof
         tracing::info!("Running SNARK prover");
@@ -97,7 +101,6 @@ async fn test_e2e_prover_service() {
             let success = zksync_os_snark_prover::run_inner(
                 &client,
                 &verifier_binary,
-                &mut gpu_state,
                 output_dir.clone(),
                 trusted_setup_file.clone(),
             )

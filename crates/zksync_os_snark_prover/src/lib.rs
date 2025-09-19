@@ -136,18 +136,9 @@ pub async fn run_linking_fri_snark(
     let mut proof_count = 0;
 
     loop {
-        #[cfg(feature = "gpu")]
-        let mut gpu_state = GpuSharedState::new(
-            &verifier_binary,
-            zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-        );
-        #[cfg(not(feature = "gpu"))]
-        let mut gpu_state = GpuSharedState::new(&verifier_binary);
-
         let success = run_inner(
             &sequencer_client,
             &verifier_binary,
-            &mut gpu_state,
             output_dir.clone(),
             trusted_setup_file.clone(),
         )
@@ -170,10 +161,17 @@ pub async fn run_linking_fri_snark(
 pub async fn run_inner<P: ProofClient>(
     client: &P,
     verifier_binary: &Vec<u32>,
-    gpu_state: &mut GpuSharedState<'_>,
     output_dir: String,
     trusted_setup_file: Option<String>,
 ) -> anyhow::Result<bool> {
+    #[cfg(feature = "gpu")]
+    let mut gpu_state = GpuSharedState::new(
+        &verifier_binary,
+        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+    );
+    #[cfg(not(feature = "gpu"))]
+    let mut gpu_state = GpuSharedState::new(verifier_binary);
+
     let proof_time = Instant::now();
     tracing::info!("Started picking job");
     let snark_proof_input = match client.pick_snark_job().await {
@@ -205,7 +203,7 @@ pub async fn run_inner<P: ProofClient>(
         end_block
     );
 
-    let proof = merge_fris(snark_proof_input, verifier_binary, gpu_state);
+    let proof = merge_fris(snark_proof_input, verifier_binary, &mut gpu_state);
 
     // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
     #[cfg(feature = "gpu")]

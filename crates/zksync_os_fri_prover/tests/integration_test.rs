@@ -1,15 +1,19 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use zksync_airbender_cli::prover_utils::{load_binary_from_path, GpuSharedState};
-use zksync_os_fri_prover::run_inner;
-use zksync_sequencer_proof_client::file_based_proof_client::FileBasedProofClient;
+use zksync_os_fri_prover::{init_tracing, run_inner};
+use zksync_sequencer_proof_client::{
+    file_based_proof_client::FileBasedProofClient, sequencer_proof_client::SequencerProofClient,
+    ProofClient,
+};
 
 #[tokio::test]
 async fn test_fri_prover() {
     // To run the test you need to have the following files:
-    // - ../../fri_job.json
+    // - ../../test_data/fri_job.json
 
-    let client = FileBasedProofClient::new("../../".to_string());
+    init_tracing();
+    let client = FileBasedProofClient::default();
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -31,10 +35,35 @@ async fn test_fri_prover() {
     #[cfg(not(feature = "gpu"))]
     let mut gpu_state = GpuSharedState::new(&binary);
 
+    let path = Some(PathBuf::from("../../test_data/fri_proof.json"));
+
     tracing::info!("Starting Zksync OS FRI prover test");
 
-    let success = run_inner(&client, &binary, 10000, &mut gpu_state, None)
+    let success = run_inner(&client, &binary, 10000, &mut gpu_state, path)
         .await
         .expect("Failed to run FRI prover");
     assert!(success);
+}
+
+#[tokio::test]
+async fn serialize_fri_job() {
+    init_tracing();
+    let client = SequencerProofClient::new("http://localhost:3124".to_string());
+    let file_based_client = FileBasedProofClient::default();
+
+    let (block_number, prover_input) = match client.pick_fri_job().await {
+        Err(err) => {
+            tracing::error!("Error fetching next prover job: {err}");
+            return;
+        }
+        Ok(Some(next_block)) => next_block,
+        Ok(None) => {
+            tracing::info!("No pending blocks to prove");
+            return;
+        }
+    };
+
+    file_based_client
+        .serialize_fri_job(block_number, prover_input)
+        .unwrap();
 }
