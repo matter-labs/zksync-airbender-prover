@@ -10,9 +10,6 @@ use std::fmt;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
-pub mod command_handler;
-pub mod metrics;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
 pub struct L2BlockNumber(pub u32);
 
