@@ -63,6 +63,7 @@ jobs:
 
     steps:
       - name: Prepare environment
+        shell: 'bash -ex {0}'
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
@@ -97,7 +98,7 @@ jobs:
           nvcc --version
 
       - name: Prepare bellman-cuda directory
-        shell: bash
+        shell: 'bash -ex {0}'
         run: |
           release=($(curl --silent https://api.github.com/repos/matter-labs/era-bellman-cuda/releases | jq -r '.[0] | .name, .tarball_url, .assets[0].browser_download_url'))
           curl --silent -L "${release[1]}" --output bellman-cuda-source.tar.gz
@@ -107,6 +108,7 @@ jobs:
           tar xvfz bellman-cuda-source.tar.gz -C ./bellman-cuda --strip-components=1 --wildcards \*/src/
           
       - name: Build and archive test
+        shell: 'bash -ex {0}'
         env:
           CUDAARCHS: 89
           # This is a special mandatory hack to transfer test binary from one machine to another.
@@ -118,7 +120,7 @@ jobs:
           WORKSPACE_DIR: "/home/./runner/_work/zksync-airbender-prover/zksync-airbender-prover"
         run: |
           cargo nextest archive --release --profile ci -p ${{ matrix.package }} \
-            --features gpu --archive-file ${matrix.package}-${matrix.cuda}-test-binary.tar.zst
+            --features gpu --archive-file ${{ matrix.package }}-${{ matrix.cuda }}-test-binary.tar.zst
 
       - name: Upload tests
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -164,7 +166,7 @@ jobs:
           cache: false
 
       - name: Prepare bellman-cuda directory
-        shell: bash
+        shell: 'bash -ex {0}'
         run: |
           release=($(curl --silent https://api.github.com/repos/matter-labs/era-bellman-cuda/releases | jq -r '.[0] | .name, .tarball_url, .assets[0].browser_download_url'))
           curl --silent -L "${release[1]}" --output bellman-cuda-source.tar.gz
@@ -179,8 +181,9 @@ jobs:
           name: ${{ matrix.package }}-${{ matrix.cuda }}-test-binary
   
       - name: Run GPU test binary
+        shell: 'bash -ex {0}'
         run: |
           cargo nextest run -E 'binary(prover)' --no-capture \
-            --archive-file "${matrix.package}-${matrix.cuda}-test-binary.tar.zst" \
-              --workspace-remap ${GITHUB_WORKSPACE}
+            --archive-file "${{ matrix.package }}-${{ matrix.cuda }}-test-binary.tar.zst" \
+              --workspace-remap ${{ github.workspace }}
 
