@@ -49,12 +49,9 @@ jobs:
         run: cargo build --verbose --release --no-default-features
 
   gpu-tests:
-    runs-on: [ ubuntu-latest ]
-    strategy:
-      matrix:
-        cuda: [ "12.2.0-runtime-ubuntu22.04" ]
+    runs-on: matterlabs-ci-gpu-runner
     container:
-      image: nvidia/cuda:${{ matrix.cuda }}
+      image: nvidia/cuda:12.9.1-devel-ubuntu22.04
     env:
       RUST_TOOLCHAIN: nightly-2025-05-20
       BELLMAN_CUDA_DIR: ${{ github.workspace }}/bellman-cuda
