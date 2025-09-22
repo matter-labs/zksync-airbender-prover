@@ -52,7 +52,7 @@ jobs:
     runs-on: [ ubuntu-latest ]
     strategy:
       matrix:
-        cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
+        cuda: [ "12.2.0-runtime-ubuntu22.04" ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}
     env:
