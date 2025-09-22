@@ -1,0 +1,4 @@
+*.tmp
+*.json
+!fri_job.json
+!snark_job.json

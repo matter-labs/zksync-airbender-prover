@@ -7,6 +7,7 @@ This repo contains 3 crates:
 - sequencer_proof_client
 - zksync_os_fri_prover
 - zksync_os_snark_prover
+- zksync_os_prover_service
 
 ### Sequencer Proof Client
 
@@ -22,6 +23,10 @@ There's no state persisted in between.
 ### ZKsync OS SNARK Prover
 
 SNARKs the final proof. Gets a set of continuous FRIs from sequencer, merges them into a single FRI, creates a FINAL proof out of it and then SNARKs it.
+
+### ZKsync OS Prover Service
+
+The ZKsync OS Prover Service is made for running both FRI and SNARK provers on the same machine. You can configure `max_snark_latency` and `max_fris_per_snark` parameters.
 
 ### Usage
 
@@ -71,6 +76,19 @@ cargo run --release --bin zksync_sequencer_proof_client -- pick-snark --url http
 cargo run --release --bin zksync_sequencer_proof_client -- submit-snark --from-block-number 1 --to-block-number 2 --url http://localhost:3124 --path "./snark_proof.json"
 ```
 Specify --path argument to override default location.
+
+**This command starts ZKsync OS Prover Service**
+
+```bash
+# optional - increase stack size to 300M (TODO: check if this could be lower)
+ulimit -s 300000
+
+# start prover service
+RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_prover_service -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs --max-snark-latency 3600
+```
+Specify optional `--iterations` argument to run SNARK prover N times and then exit.
+Specify `--max-snark-latency` OR `--max-fris-per-snark` to define latency (in seconds) OR max amount FRI proofs per SNARK for exiting FRI prover and starting SNARK prover. You can not specify them both in the same time.
+
 
 ## Development / WIP
 
