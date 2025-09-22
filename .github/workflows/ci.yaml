@@ -48,10 +48,14 @@ jobs:
       - name: Build
         run: cargo build --verbose --release --no-default-features
 
-  gpu-tests:
-    runs-on: matterlabs-ci-gpu-runner
+  gpu-build:
+    runs-on: [ ubuntu-latest ]
+    strategy:
+      matrix:
+        cuda: [ "12.9.1-devel-ubuntu22.04", "13.0.0-devel-ubuntu24.04" ]
+        package: [ "zksync_os_fri_prover", "zksync_os_snark_prover", "zksync_os_prover_service" ]
     container:
-      image: nvidia/cuda:12.9.1-devel-ubuntu22.04
+      image: nvidia/cuda:${{ matrix.cuda }}
     env:
       RUST_TOOLCHAIN: nightly-2025-05-20
       BELLMAN_CUDA_DIR: ${{ github.workspace }}/bellman-cuda
@@ -87,9 +91,63 @@ jobs:
         run: |
           nvcc --version
 
+      - name: Prepare bellman-cuda directory
+        shell: bash
+        run: |
+          release=($(curl --silent https://api.github.com/repos/matter-labs/era-bellman-cuda/releases | jq -r '.[0] | .name, .tarball_url, .assets[0].browser_download_url'))
+          curl --silent -L "${release[1]}" --output bellman-cuda-source.tar.gz
+          curl --silent -L "${release[2]}" --output bellman-cuda.tar.gz
+          mkdir -p bellman-cuda
+          tar xvfz bellman-cuda.tar.gz -C ./bellman-cuda
+          tar xvfz bellman-cuda-source.tar.gz -C ./bellman-cuda --strip-components=1 --wildcards \*/src/
+
+      - name: Build test binary and copy to artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          CUDAARCHS=89 CARGO_TARGET_DIR=./build \
+          cargo +$RUST_TOOLCHAIN test -p ${{ matrix.package }} --no-run --release --features gpu --message-format=json -q \
+          | jq -r 'select(.executable != null) | .executable' \
+          | while read binary; do
+            cp "$binary" artifacts/${{ matrix.package }}
+          done
+
+      - name: Upload test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: zksync-airbender-prover-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+          path: artifacts/${{ matrix.package }}
+          if-no-files-found: error
+
+  gpu-test:
+    runs-on: [ matterlabs-ci-gpu-runner ]
+    strategy:
+      matrix:
+        cuda: [ "12.9.1-devel-ubuntu22.04" ]
+        package: [ "zksync_os_fri_prover", "zksync_os_snark_prover", "zksync_os_prover_service" ]
+    needs: gpu-build
+    env:
+      RUST_TOOLCHAIN: nightly-2025-05-20
+      BELLMAN_CUDA_DIR: ${{ github.workspace }}/bellman-cuda
+
+    steps:
+      - name: Prepare environment
+        run: |
+          echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> $GITHUB_PATH
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          submodules: "recursive"
+
       - name: Check Nvidia driver version
         run: |
           nvidia-smi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly-2025-05-20
 
       - name: Prepare bellman-cuda directory
         shell: bash
@@ -101,10 +159,13 @@ jobs:
           tar xvfz bellman-cuda.tar.gz -C ./bellman-cuda
           tar xvfz bellman-cuda-source.tar.gz -C ./bellman-cuda --strip-components=1 --wildcards \*/src/
 
-      - name: Build with GPU features
-        run: |
-          cargo build --verbose --release --features gpu
+      - name: Download test binary
+        uses: actions/download-artifact@v4
+        with:
+          name: zksync-airbender-prover-${{ matrix.cuda }}-${{ matrix.package }}-test-binary
+          path: zksync-airbender-prover-test-binary/
 
-      - name: Run tests with GPU features
+      - name: Run GPU test binary
         run: |
-          cargo test --release --verbose --features gpu
+          chmod +x zksync-airbender-prover-test-binary/${{ matrix.package }}
+          CUDAARCHS=89 zksync-airbender-prover-test-binary/${{ matrix.package }} --nocapture
