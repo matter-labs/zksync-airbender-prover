@@ -20,7 +20,7 @@ base64.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["full"] }
 bincode.workspace = true
 clap.workspace = true
 tracing.workspace = true

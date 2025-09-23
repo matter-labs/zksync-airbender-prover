@@ -148,20 +148,35 @@ fn main() {
             let (stop_sender, stop_receiver) = watch::channel(false);
 
             runtime.block_on(async move {
+                let metrics_handle = tokio::spawn(async move {
+                    metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
+                });
+
                 tokio::select! {
-                     result = run_linking_fri_snark(
-                       binary_path,
-                       sequencer_url,
-                       output_dir,
-                       trusted_setup_file,
-                       iterations,
+                    result = run_linking_fri_snark(
+                        binary_path,
+                        sequencer_url,
+                        output_dir,
+                        trusted_setup_file,
+                        iterations,
                     ) => {
                         tracing::info!("SNARK prover finished");
                         result.expect("SNARK prover finished with error");
                         stop_sender.send(true).expect("failed to send stop signal");
                     }
-                    _ = metrics::start_metrics_exporter(prometheus_port, stop_receiver) => {
-                        tracing::info!("Metrics exporter finished");
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::info!("Stop request received, shutting down");
+                    },
+                }
+
+                match tokio::time::timeout(Duration::from_secs(10), metrics_handle).await {
+                    Ok(join_result) => {
+                        if let Err(join_err) = join_result {
+                            tracing::warn!("metrics task panicked or was cancelled: {join_err}");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Metrics exporter timed out, aborting: {e}");
                     }
                 }
             });

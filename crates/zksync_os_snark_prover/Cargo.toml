@@ -22,7 +22,7 @@ zkos_wrapper.workspace = true
 #proof_cache = { path = "../proof_cache" }
 #sequencer_proof_client = { path = "../sequencer_proof_client" }
 
-tokio.workspace = true
+tokio = { workspace = true, features = ["full"] }
 serde_json.workspace = true
 
 serde.workspace = true

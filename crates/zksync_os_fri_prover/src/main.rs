@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use clap::Parser;
 use tokio::sync::watch;
 use zksync_os_fri_prover::metrics;
@@ -10,13 +12,28 @@ pub async fn main() -> anyhow::Result<()> {
 
     let prometheus_port = args.prometheus_port;
 
+    let metrics_handle = tokio::spawn(async move {
+        metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
+    });
+
     tokio::select! {
         _ = zksync_os_fri_prover::run(args) => {
             tracing::info!("Zksync OS FRI prover finished");
             stop_sender.send(true).expect("failed to send stop signal");
         }
-        _ = metrics::start_metrics_exporter(prometheus_port, stop_receiver) => {
-            tracing::info!("Metrics exporter finished");
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Stop request received, shutting down");
+        },
+    }
+
+    match tokio::time::timeout(Duration::from_secs(10), metrics_handle).await {
+        Ok(join_result) => {
+            if let Err(join_err) = join_result {
+                tracing::warn!("metrics task panicked or was cancelled: {join_err}");
+            }
+        }
+        Err(e) => {
+            tracing::error!("Metrics exporter timed out, aborting: {e}");
         }
     }
 
