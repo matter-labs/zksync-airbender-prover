@@ -5040,7 +5040,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "vise",
- "vise-exporter",
  "zkos-wrapper",
  "zksync_bellman",
  "zksync_solidity_vk_codegen",
