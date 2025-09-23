@@ -182,6 +182,10 @@ fn merge_fris(
     }
     tracing::info!("Starting proof merging");
 
+    SNARK_PROVER_METRICS
+        .fri_proofs_merged
+        .set(snark_proof_input.fri_proofs.len() as i64);
+
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
         let up_to_block = snark_proof_input.from_block_number.0 + i as u32 - 1;

@@ -37,6 +37,7 @@ pub struct SnarkProverMetrics {
     pub time_taken_snark: Histogram,
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
     pub time_taken_full: Histogram,
+    pub fri_proofs_merged: Gauge,
     pub latest_proven_block: Gauge,
 }
 
