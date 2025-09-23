@@ -1,13 +1,14 @@
 use std::net::Ipv4Addr;
 
 use tokio::sync::watch;
-use vise::{Metrics, MetricsCollection};
+use vise::{Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
 
 pub async fn start_metrics_exporter(
     port: u16,
     mut stop_receiver: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
+    tracing::info!("Starting metrics exporter on port {}", port);
     let registry = MetricsCollection::lazy().collect();
     let metrics_exporter =
         MetricsExporter::new(registry.into()).with_graceful_shutdown(async move {
@@ -25,6 +26,10 @@ pub async fn start_metrics_exporter(
 
 #[derive(Debug, Clone, Metrics)]
 #[metrics(prefix = "fri_prover")]
-pub struct FriProverMetrics {}
+pub struct FriProverMetrics {
+    #[metrics(buckets = vise::Buckets::linear(200.0..=2000.0, 200.0))]
+    pub time_taken_in_milliseconds: Histogram,
+    pub latest_proven_block: Gauge,
+}
 
 pub(crate) static FRI_PROVER_METRICS: vise::Global<FriProverMetrics> = vise::Global::new();

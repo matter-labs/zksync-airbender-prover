@@ -1,6 +1,6 @@
 use clap::Parser;
 use tokio::sync::watch;
-use zksync_sequencer_proof_client::metrics;
+use zksync_os_fri_prover::metrics;
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {

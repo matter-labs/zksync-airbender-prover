@@ -1,13 +1,14 @@
 use std::net::Ipv4Addr;
 
 use tokio::sync::watch;
-use vise::{Metrics, MetricsCollection};
+use vise::{Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
 
 pub async fn start_metrics_exporter(
     port: u16,
     mut stop_receiver: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
+    tracing::info!("Starting metrics exporter on port {}", port);
     let registry = MetricsCollection::lazy().collect();
     let metrics_exporter =
         MetricsExporter::new(registry.into()).with_graceful_shutdown(async move {
@@ -25,6 +26,18 @@ pub async fn start_metrics_exporter(
 
 #[derive(Debug, Clone, Metrics)]
 #[metrics(prefix = "snark_prover")]
-pub struct SnarkProverMetrics {}
+pub struct SnarkProverMetrics {
+    #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
+    pub time_taken_startup: Histogram,
+    #[metrics(buckets = vise::Buckets::linear(1.0..=150.0, 20.0), unit = vise::Unit::Seconds)]
+    pub time_taken_merge_fri: Histogram,
+    #[metrics(buckets = vise::Buckets::linear(5.0..=20.0, 2.5), unit = vise::Unit::Seconds)]
+    pub time_taken_final_proof: Histogram,
+    #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
+    pub time_taken_snark: Histogram,
+    #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
+    pub time_taken_full: Histogram,
+    pub latest_proven_block: Gauge,
+}
 
 pub(crate) static SNARK_PROVER_METRICS: vise::Global<SnarkProverMetrics> = vise::Global::new();

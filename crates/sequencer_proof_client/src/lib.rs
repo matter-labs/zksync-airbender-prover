@@ -6,9 +6,13 @@ use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof}
 use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, time::Instant};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
+
+use crate::metrics::{Method, SEQUENCER_CLIENT_METRICS};
+
+mod metrics;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
 pub struct L2BlockNumber(pub u32);
@@ -103,7 +107,13 @@ impl SequencerProofClient {
     /// Returns `Ok(None)` if there's no block pending (204 No Content).
     pub async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let url = format!("{}/prover-jobs/FRI/pick", self.url);
+
+        let started_at = Instant::now();
+
         let resp = self.client.post(&url).send().await?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickFri]
+            .observe(started_at.elapsed().as_secs_f64());
 
         match resp.status() {
             StatusCode::OK => {
@@ -127,7 +137,12 @@ impl SequencerProofClient {
             proof,
         };
 
+        let started_at = Instant::now();
+
         let resp = self.client.post(&url).json(&payload).send().await?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitFri]
+            .observe(started_at.elapsed().as_secs_f64());
 
         if resp.status().is_success() {
             Ok(())
@@ -141,7 +156,12 @@ impl SequencerProofClient {
 
     pub async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = format!("{}/prover-jobs/SNARK/pick", self.url);
+        let started_at = Instant::now();
         let resp = self.client.post(&url).send().await?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickSnark]
+            .observe(started_at.elapsed().as_secs_f64());
+
         match resp.status() {
             StatusCode::OK => {
                 let get_snark_proof_payload = resp.json::<GetSnarkProofPayload>().await?;
@@ -164,6 +184,8 @@ impl SequencerProofClient {
     ) -> anyhow::Result<()> {
         let url = format!("{}/prover-jobs/SNARK/submit", self.url);
 
+        let started_at = Instant::now();
+
         let serialized_proof = self
             .serialize_snark_proof(&proof)
             .context("Failed to serialize SNARK proof")?;
@@ -179,6 +201,10 @@ impl SequencerProofClient {
             .send()
             .await?
             .error_for_status()?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitSnark]
+            .observe(started_at.elapsed().as_secs_f64());
+
         Ok(())
     }
 

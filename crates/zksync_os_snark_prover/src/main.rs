@@ -21,6 +21,8 @@ use zksync_airbender_execution_utils::{
 };
 use zksync_sequencer_proof_client::{SequencerProofClient, SnarkProofInputs};
 
+use crate::metrics::SNARK_PROVER_METRICS;
+
 mod metrics;
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
@@ -65,7 +67,7 @@ enum Commands {
         #[arg(long)]
         iterations: Option<usize>,
         /// Port to run the Prometheus metrics server on
-        #[arg(long, default_value = "3312")]
+        #[arg(long, default_value = "3124")]
         prometheus_port: u16,
     },
 }
@@ -172,6 +174,8 @@ fn merge_fris(
     verifier_binary: &Vec<u32>,
     gpu_state: &mut GpuSharedState,
 ) -> ProgramProof {
+    let merging_time = Instant::now();
+
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
         return snark_proof_input.fri_proofs[0].clone();
@@ -233,6 +237,11 @@ fn merge_fris(
         proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
         tracing::info!("Finished linking proofs up to block {}", up_to_block);
     }
+
+    SNARK_PROVER_METRICS
+        .time_taken_merge_fri
+        .observe(merging_time.elapsed().as_secs_f64());
+
     // TODO: We can do a recursion step here as well, IIUC
     tracing::info!(
         "Finishing linking all proofs from {} to {}",
@@ -269,6 +278,9 @@ async fn run_linking_fri_snark(
     let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
 
     tracing::info!("Starting zksync_os_snark_prover");
+
+    let startup_time = Instant::now();
+
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     #[cfg(feature = "gpu")]
@@ -279,6 +291,10 @@ async fn run_linking_fri_snark(
         tracing::info!("Finished computing SNARK precomputations");
         precomputations
     };
+
+    SNARK_PROVER_METRICS
+        .time_taken_startup
+        .observe(startup_time.elapsed().as_secs_f64());
 
     let mut proof_count = 0;
 
@@ -329,6 +345,7 @@ async fn run_linking_fri_snark(
         drop(gpu_state);
 
         tracing::info!("Creating final proof before SNARKification");
+        let final_proof_time = Instant::now();
         let final_proof = create_final_proofs_from_program_proof(
             proof,
             RecursionStrategy::UseReducedLog23Machine,
@@ -340,6 +357,10 @@ async fn run_linking_fri_snark(
             // NOTE: use this as false, if you want to run on a small GPU
             true,
         );
+
+        SNARK_PROVER_METRICS
+            .time_taken_final_proof
+            .observe(final_proof_time.elapsed().as_secs_f64());
 
         tracing::info!("Finished creating final proof");
         let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
@@ -362,6 +383,12 @@ async fn run_linking_fri_snark(
                     snark_time.elapsed(),
                     proof_time.elapsed()
                 );
+                SNARK_PROVER_METRICS
+                    .time_taken_snark
+                    .observe(snark_time.elapsed().as_secs_f64());
+                SNARK_PROVER_METRICS
+                    .time_taken_full
+                    .observe(proof_time.elapsed().as_secs_f64());
             }
             Err(e) => {
                 tracing::info!("failed to SNARKify proof: {e:?}");
@@ -373,6 +400,10 @@ async fn run_linking_fri_snark(
                 .to_str()
                 .unwrap(),
         );
+
+        SNARK_PROVER_METRICS
+            .latest_proven_block
+            .set(end_block.0 as i64);
 
         match sequencer_client
             .submit_snark_proof(start_block, end_block, snark_proof)
