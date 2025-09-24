@@ -49,7 +49,7 @@ pub fn generate_verification_key(
             }
         }
         Err(e) => {
-            tracing::info!("Error generating keys: {e}");
+            tracing::error!("Error generating keys: {e}");
         }
     }
 }
@@ -170,7 +170,7 @@ pub async fn run_linking_fri_snark(
     let mut proof_count = 0;
 
     loop {
-        let success = run_inner(
+        let proof_generated = run_inner(
             &sequencer_client,
             &verifier_binary,
             output_dir.clone(),
@@ -181,13 +181,11 @@ pub async fn run_linking_fri_snark(
         .await
         .expect("Failed to run SNARK prover");
 
-        if success {
-            proof_count += 1;
-        }
+        proof_count += proof_generated as usize;
 
-        if let Some(max_iterations) = iterations {
-            if proof_count >= max_iterations {
-                tracing::info!("Reached maximum iterations ({max_iterations}), exiting...");
+        if let Some(max_proofs_generated) = iterations {
+            if proof_count >= max_proofs_generated {
+                tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...");
                 return Ok(());
             }
         }

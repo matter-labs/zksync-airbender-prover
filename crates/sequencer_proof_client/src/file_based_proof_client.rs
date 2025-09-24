@@ -10,6 +10,12 @@ use crate::{
     SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 
+const FRI_JOB_FILE: &str = "fri_job.json";
+const FRI_PROOF_FILE: &str = "fri_proof.json";
+const SNARK_JOB_FILE: &str = "snark_job.json";
+const SNARK_PROOF_FILE: &str = "snark_proof.json";
+
+// FileBasedProofClient stores proof jobs and proofs in files, useful for local testing.
 #[derive(Debug)]
 pub struct FileBasedProofClient {
     pub base_dir: PathBuf,
@@ -31,10 +37,11 @@ impl FileBasedProofClient {
     }
 
     pub fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String> {
-        let path = self.base_dir.join("snark_proof.json");
-        let mut file = std::fs::File::create(path).context("Failed to create snark_proof.json")?;
+        let path = self.base_dir.join(SNARK_PROOF_FILE);
+        let mut file =
+            std::fs::File::create(path).context(format!("Failed to create {SNARK_PROOF_FILE}"))?;
         serde_json::to_writer_pretty(&mut file, &proof)
-            .context("Failed to write snark_proof.json")?;
+            .context(format!("Failed to write {SNARK_PROOF_FILE}"))?;
         Ok(String::new())
     }
 
@@ -43,8 +50,9 @@ impl FileBasedProofClient {
         block_number: u32,
         prover_input: Vec<u8>,
     ) -> anyhow::Result<()> {
-        let path = self.base_dir.join("fri_job.json");
-        let mut file = std::fs::File::create(path).context("Failed to create fri_job.json")?;
+        let path = self.base_dir.join(FRI_JOB_FILE);
+        let mut file =
+            std::fs::File::create(path).context(format!("Failed to create {FRI_JOB_FILE}"))?;
         serde_json::to_writer_pretty(
             &mut file,
             &NextFriProverJobPayload {
@@ -52,13 +60,14 @@ impl FileBasedProofClient {
                 prover_input: STANDARD.encode(&prover_input),
             },
         )
-        .context("Failed to write fri_job.json")?;
+        .context(format!("Failed to write {FRI_JOB_FILE}"))?;
         Ok(())
     }
 
     pub fn serialize_snark_job(&self, snark_proof_inputs: SnarkProofInputs) -> anyhow::Result<()> {
-        let path = self.base_dir.join("snark_job.json");
-        let mut file = std::fs::File::create(path).context("Failed to create snark_job.json")?;
+        let path = self.base_dir.join(SNARK_JOB_FILE);
+        let mut file =
+            std::fs::File::create(path).context(format!("Failed to create {SNARK_JOB_FILE}"))?;
         let fri_proofs = snark_proof_inputs
             .fri_proofs
             .iter()
@@ -77,7 +86,7 @@ impl FileBasedProofClient {
                 fri_proofs,
             },
         )
-        .context("Failed to write snark_job.json")?;
+        .context(format!("Failed to write {SNARK_JOB_FILE}"))?;
         Ok(())
     }
 }
@@ -85,33 +94,34 @@ impl FileBasedProofClient {
 #[async_trait]
 impl ProofClient for FileBasedProofClient {
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
-        let path = self.base_dir.join("fri_job.json");
-        let file = std::fs::File::open(path).context("Failed to open fri_job.json")?;
+        let path = self.base_dir.join(FRI_JOB_FILE);
+        let file = std::fs::File::open(path).context(format!("Failed to open {FRI_JOB_FILE}"))?;
         let fri_job: NextFriProverJobPayload =
-            serde_json::from_reader(file).context("Failed to parse fri_job.json")?;
+            serde_json::from_reader(file).context(format!("Failed to parse {FRI_JOB_FILE}"))?;
         let data = STANDARD
             .decode(&fri_job.prover_input)
-            .map_err(|e| anyhow!("Failed to decode block data: {}", e))?;
+            .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
         Ok(Some((fri_job.block_number, data)))
     }
 
     async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()> {
-        let path = self.base_dir.join("fri_proof.json");
-        let mut file = std::fs::File::create(path).context("Failed to create fri_proof.json")?;
+        let path = self.base_dir.join(FRI_PROOF_FILE);
+        let mut file =
+            std::fs::File::create(path).context(format!("Failed to create {FRI_PROOF_FILE}"))?;
         let payload = SubmitFriProofPayload {
             block_number: block_number as u64,
             proof,
         };
         serde_json::to_writer_pretty(&mut file, &payload)
-            .context("Failed to write fri_proof.json")?;
+            .context(format!("Failed to write {FRI_PROOF_FILE}"))?;
         Ok(())
     }
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
-        let path = self.base_dir.join("snark_job.json");
-        let file = std::fs::File::open(path).context("Failed to open snark_job.json")?;
+        let path = self.base_dir.join(SNARK_JOB_FILE);
+        let file = std::fs::File::open(path).context(format!("Failed to open {SNARK_JOB_FILE}"))?;
         let snark_job: GetSnarkProofPayload =
-            serde_json::from_reader(file).context("Failed to parse snark_job.json")?;
+            serde_json::from_reader(file).context(format!("Failed to parse {SNARK_JOB_FILE}"))?;
         Ok(Some(snark_job.try_into()?))
     }
 
@@ -121,15 +131,16 @@ impl ProofClient for FileBasedProofClient {
         to_block_number: L2BlockNumber,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
-        let path = self.base_dir.join("snark_proof.json");
-        let mut file = std::fs::File::create(path).context("Failed to create snark_proof.json")?;
+        let path = self.base_dir.join(SNARK_PROOF_FILE);
+        let mut file =
+            std::fs::File::create(path).context(format!("Failed to create {SNARK_PROOF_FILE}"))?;
         let payload = SubmitSnarkProofPayload {
             block_number_from: from_block_number.0 as u64,
             block_number_to: to_block_number.0 as u64,
             proof: self.serialize_snark_proof(&proof)?,
         };
         serde_json::to_writer_pretty(&mut file, &payload)
-            .context("Failed to write snark_proof.json")?;
+            .context(format!("Failed to write {SNARK_PROOF_FILE}"))?;
         Ok(())
     }
 }

@@ -63,11 +63,11 @@ impl ProofClient for SequencerProofClient {
                 let body: NextFriProverJobPayload = resp.json().await?;
                 let data = STANDARD
                     .decode(&body.prover_input)
-                    .map_err(|e| anyhow!("Failed to decode block data: {}", e))?;
+                    .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
                 Ok(Some((body.block_number, data)))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            s => Err(anyhow!("Unexpected status {} when fetching next block", s)),
+            s => Err(anyhow!("Unexpected status {s} when fetching next block")),
         }
     }
 
@@ -105,7 +105,7 @@ impl ProofClient for SequencerProofClient {
                 ))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            _ => Err(anyhow!("Failed to pick SNARK job: {:?}", resp)),
+            _ => Err(anyhow!("Failed to pick SNARK job: {resp:?}")),
         }
     }
 

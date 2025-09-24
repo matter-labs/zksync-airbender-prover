@@ -40,7 +40,7 @@ enum Commands {
         setup: SetupOptions,
         // #[arg(short, long, default_value = "linking-fris")]
         // mode: SnarkMode,
-        /// Number of iterations (proofs) to generate before exiting. If not specified, runs indefinitely
+        /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
         #[arg(long)]
         iterations: Option<usize>,
     },
