@@ -25,10 +25,10 @@ use zksync_sequencer_proof_client::sequencer_proof_client::SequencerProofClient;
 pub struct Args {
     /// Max SNARK latency in seconds (default value - 1 hour)
     #[arg(long, default_value = "3600", conflicts_with = "max_fris_per_snark")]
-    max_snark_latency: Option<u64>,
+    pub max_snark_latency: Option<u64>,
     /// Max amount of FRI proofs per SNARK (default value - 100)
     #[arg(long, default_value = "100", conflicts_with = "max_snark_latency")]
-    max_fris_per_snark: Option<usize>,
+    pub max_fris_per_snark: Option<usize>,
     /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
     #[arg(short, long, default_value = "http://localhost:3124")]
     pub base_url: String,
