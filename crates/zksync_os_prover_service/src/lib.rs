@@ -32,6 +32,9 @@ pub struct Args {
     /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
     #[arg(short, long, default_value = "http://localhost:3124")]
     pub base_url: String,
+    /// Enable logging and use the logging-enabled binary
+    #[arg(long, default_value = "true")]
+    pub enabled_logging: bool,
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
@@ -58,7 +61,9 @@ pub fn init_tracing() {
 }
 
 pub async fn run(args: Args) {
-    init_tracing();
+    if args.enabled_logging {
+        init_tracing();
+    }
     let client = SequencerProofClient::new(args.base_url);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
