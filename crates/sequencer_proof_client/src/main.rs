@@ -1,7 +1,10 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use tracing_subscriber::{fmt, EnvFilter};
 use zkos_wrapper::SnarkWrapperProof;
-use zksync_sequencer_proof_client::{L2BlockNumber, SequencerProofClient};
+use zksync_sequencer_proof_client::{
+    sequencer_proof_client::SequencerProofClient, L2BlockNumber, ProofClient,
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -92,7 +95,6 @@ enum Commands {
 }
 
 fn init_tracing(verbosity: u8) {
-    use tracing_subscriber::{fmt, EnvFilter};
     let level = match verbosity {
         0 => "info",
         1 => "debug",
