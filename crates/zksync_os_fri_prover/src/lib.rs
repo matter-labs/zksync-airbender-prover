@@ -10,6 +10,11 @@ use zksync_airbender_cli::prover_utils::{
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
+
+use crate::metrics::FRI_PROVER_METRICS;
+
+pub mod metrics;
+
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
@@ -35,6 +40,10 @@ pub struct Args {
     /// Path to the output file
     #[arg(short, long)]
     pub path: Option<PathBuf>,
+
+    /// Port to run the Prometheus metrics server on
+    #[arg(long, default_value = "3124")]
+    pub prometheus_port: u16,
 }
 
 pub fn init_tracing() {
@@ -171,6 +180,10 @@ pub async fn run_inner<P: ProofClient>(
     if let Some(ref path) = path {
         serialize_to_file(&proof_b64, path);
     }
+
+    FRI_PROVER_METRICS
+        .latest_proven_block
+        .set(block_number as i64);
 
     match client.submit_fri_proof(block_number, proof_b64).await {
         Ok(_) => tracing::info!(
