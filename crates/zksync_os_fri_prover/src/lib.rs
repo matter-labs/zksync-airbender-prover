@@ -1,23 +1,15 @@
-use std::{
-    path::{Path, PathBuf},
-    time::SystemTime,
-};
+use std::path::{Path, PathBuf};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::SequencerProofClient;
-
-use crate::metrics::FRI_PROVER_METRICS;
-
-pub mod metrics;
-
+use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
@@ -28,6 +20,7 @@ pub struct Args {
     #[arg(short, long, default_value = "http://localhost:3124")]
     pub base_url: String,
     /// Enable logging and use the logging-enabled binary
+    /// This is not used in the FRI prover, but is kept for backward compatibility.
     #[arg(long)]
     pub enabled_logging: bool,
     /// Path to `app.bin`
@@ -36,18 +29,24 @@ pub struct Args {
     /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
-    /// Number of iterations (proofs) to generate before exiting. If not specified, runs indefinitely
+    /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
     #[arg(long)]
     pub iterations: Option<usize>,
     /// Path to the output file
     #[arg(short, long)]
     pub path: Option<PathBuf>,
+
     /// Port to run the Prometheus metrics server on
     #[arg(long, default_value = "3124")]
     pub prometheus_port: u16,
 }
 
-fn create_proof(
+pub fn init_tracing() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    FmtSubscriber::builder().with_env_filter(filter).init();
+}
+
+pub fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,
     circuit_limit: usize,
@@ -83,14 +82,7 @@ fn create_proof(
 }
 
 pub async fn run(args: Args) {
-    if args.enabled_logging {
-        let env_filter =
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-        fmt::Subscriber::builder()
-            .with_env_filter(env_filter)
-            .init();
-    }
-
+    init_tracing();
     let client = SequencerProofClient::new(args.base_url);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -119,52 +111,70 @@ pub async fn run(args: Args) {
     let mut proof_count = 0;
 
     loop {
-        let (block_number, prover_input) = match client.pick_fri_job().await {
-            Err(err) => {
-                tracing::error!("Error fetching next prover job: {err}");
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                continue;
+        let proof_generated = run_inner(
+            &client,
+            &binary,
+            args.circuit_limit,
+            &mut gpu_state,
+            args.path.clone(),
+        )
+        .await
+        .expect("Failed to run FRI prover");
+
+        proof_count += proof_generated as usize;
+
+        // Check if we've reached the iteration limit
+        if let Some(max_proofs_generated) = args.iterations {
+            if proof_count >= max_proofs_generated {
+                tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...",);
+                break;
             }
-            Ok(Some(next_block)) => next_block,
-            Ok(None) => {
-                tracing::debug!("No pending blocks to prove, retrying in 100ms...");
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                continue;
-            }
-        };
-
-        // make prover_input (Vec<u8>) into Vec<u32>:
-        let prover_input: Vec<u32> = prover_input
-            .chunks_exact(4)
-            .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
-            .collect();
-
-        tracing::info!(
-            "{:?} starting proving block number {}",
-            SystemTime::now(),
-            block_number
-        );
-
-        let proof = create_proof(prover_input, &binary, args.circuit_limit, &mut gpu_state);
-
-        // Increment proof counter after creating proof, regardless of submission success
-        proof_count += 1;
-
-        tracing::info!(
-            "{:?} finished proving block number {}",
-            SystemTime::now(),
-            block_number
-        );
-        let proof_bytes: Vec<u8> =
-            bincode::serde::encode_to_vec(&proof, bincode::config::standard())
-                .expect("failed to bincode-serialize proof");
-
-        // 2) base64-encode that binary blob
-        let proof_b64 = STANDARD.encode(&proof_bytes);
-
-        if let Some(ref path) = args.path {
-            serialize_to_file(&proof_b64, path);
         }
+    }
+}
+
+pub async fn run_inner<P: ProofClient>(
+    client: &P,
+    binary: &Vec<u32>,
+    circuit_limit: usize,
+    #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,
+    #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
+    path: Option<PathBuf>,
+) -> anyhow::Result<bool> {
+    let (block_number, prover_input) = match client.pick_fri_job().await {
+        Err(err) => {
+            tracing::error!("Error fetching next prover job: {err}");
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            return Ok(false);
+        }
+        Ok(Some(next_block)) => next_block,
+        Ok(None) => {
+            tracing::info!("No pending blocks to prove, retrying in 100ms...");
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            return Ok(false);
+        }
+    };
+
+    // make prover_input (Vec<u8>) into Vec<u32>:
+    let prover_input: Vec<u32> = prover_input
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .collect();
+
+    tracing::info!("Starting proving block number {}", block_number);
+
+    let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
+
+    tracing::info!("Finished proving block number {}", block_number);
+    let proof_bytes: Vec<u8> = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
+        .expect("failed to bincode-serialize proof");
+
+    // 2) base64-encode that binary blob
+    let proof_b64 = STANDARD.encode(&proof_bytes);
+
+    if let Some(ref path) = path {
+        serialize_to_file(&proof_b64, path);
+    }
 
         FRI_PROVER_METRICS
             .latest_proven_block
@@ -172,26 +182,17 @@ pub async fn run(args: Args) {
 
         match client.submit_fri_proof(block_number, proof_b64).await {
             Ok(_) => tracing::info!(
-                "{:?} successfully submitted proof for block number {}",
-                SystemTime::now(),
+                "Successfully submitted proof for block number {}",
                 block_number
             ),
             Err(err) => {
                 tracing::error!(
-                    "{:?} failed to submit proof for block number {}: {}",
-                    SystemTime::now(),
+                    "Failed to submit proof for block number {}: {}",
                     block_number,
                     err
                 );
             }
         }
 
-        // Check if we've reached the iteration limit
-        if let Some(max_iterations) = args.iterations {
-            if proof_count >= max_iterations {
-                tracing::info!("Reached maximum iterations ({max_iterations}), exiting...");
-                break;
-            }
-        }
-    }
+    Ok(true)
 }

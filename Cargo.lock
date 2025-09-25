@@ -171,6 +171,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "async-trait"
+version = "0.1.89"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
+dependencies = [
+ "proc-macro2 1.0.101",
+ "quote 1.0.40",
+ "syn 2.0.106",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3783,7 +3794,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4997,8 +5008,27 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "vise",
- "vise-exporter",
+ "zksync_sequencer_proof_client",
+]
+
+[[package]]
+name = "zksync_os_prover_service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "bincode 2.0.1",
+ "clap",
+ "cli",
+ "execution_utils",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zkos-wrapper",
+ "zksync_os_fri_prover",
+ "zksync_os_snark_prover",
  "zksync_sequencer_proof_client",
 ]
 
@@ -5010,6 +5040,7 @@ dependencies = [
  "clap",
  "cli",
  "execution_utils",
+ "proof-compression",
  "serde",
  "serde_json",
  "tokio",
@@ -5039,6 +5070,7 @@ name = "zksync_sequencer_proof_client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64",
  "bincode 2.0.1",
  "circuit_definitions",
