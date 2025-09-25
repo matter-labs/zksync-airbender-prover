@@ -14,7 +14,7 @@ pub(crate) enum Method {
 #[derive(Debug, Clone, Metrics)]
 #[metrics(prefix = "sequencer_client")]
 pub struct SequencerClientMetrics {
-    #[metrics(buckets = vise::Buckets::exponential(1.0..=1024.0, 2.0))]
+    #[metrics(buckets = vise::Buckets::exponential(0.001..=2.0, 2.0), unit = vise::Unit::Seconds)]
     pub time_taken: Family<Method, Histogram>,
 }
 

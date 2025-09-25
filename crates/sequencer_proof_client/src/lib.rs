@@ -4,11 +4,11 @@ pub mod sequencer_proof_client;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::{fmt, time::Instant};
+use std::fmt;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
-use crate::metrics::{Method, SEQUENCER_CLIENT_METRICS};
+use crate::metrics::SEQUENCER_CLIENT_METRICS;
 
 mod metrics;
 

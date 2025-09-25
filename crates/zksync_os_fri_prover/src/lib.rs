@@ -10,6 +10,11 @@ use zksync_airbender_cli::prover_utils::{
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
+
+use crate::metrics::FRI_PROVER_METRICS;
+
+pub mod metrics;
+
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
@@ -176,23 +181,23 @@ pub async fn run_inner<P: ProofClient>(
         serialize_to_file(&proof_b64, path);
     }
 
-        FRI_PROVER_METRICS
-            .latest_proven_block
-            .set(block_number as i64);
+    FRI_PROVER_METRICS
+        .latest_proven_block
+        .set(block_number as i64);
 
-        match client.submit_fri_proof(block_number, proof_b64).await {
-            Ok(_) => tracing::info!(
-                "Successfully submitted proof for block number {}",
-                block_number
-            ),
-            Err(err) => {
-                tracing::error!(
-                    "Failed to submit proof for block number {}: {}",
-                    block_number,
-                    err
-                );
-            }
+    match client.submit_fri_proof(block_number, proof_b64).await {
+        Ok(_) => tracing::info!(
+            "Successfully submitted proof for block number {}",
+            block_number
+        ),
+        Err(err) => {
+            tracing::error!(
+                "Failed to submit proof for block number {}: {}",
+                block_number,
+                err
+            );
         }
+    }
 
     Ok(true)
 }

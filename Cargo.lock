@@ -5008,6 +5008,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "vise",
+ "vise-exporter",
  "zksync_sequencer_proof_client",
 ]
 

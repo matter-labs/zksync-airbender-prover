@@ -1,6 +1,11 @@
+use std::time::Duration;
+
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use zksync_os_snark_prover::{generate_verification_key, init_tracing, run_linking_fri_snark};
+use tokio::sync::watch;
+use zksync_os_snark_prover::{
+    generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
+};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -43,39 +48,10 @@ enum Commands {
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
         #[arg(long)]
         iterations: Option<usize>,
+        /// Port to run the Prometheus metrics server on
+        #[arg(long, default_value = "3124")]
+        prometheus_port: u16,
     },
-}
-
-fn init_tracing() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    FmtSubscriber::builder().with_env_filter(filter).init();
-}
-
-fn generate_verification_key(
-    binary_path: String,
-    output_dir: String,
-    trusted_setup_file: String,
-    vk_verification_key_file: Option<String>,
-) {
-    match zkos_wrapper::generate_vk(
-        Some(binary_path),
-        output_dir,
-        Some(trusted_setup_file),
-        true,
-        zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
-    ) {
-        Ok(key) => {
-            if let Some(vk_file) = vk_verification_key_file {
-                std::fs::write(vk_file, format!("{key:?}"))
-                    .expect("Failed to write verification key to file");
-            } else {
-                tracing::info!("Verification key generated successfully: {:#?}", key);
-            }
-        }
-        Err(e) => {
-            tracing::info!("Error generating keys: {e}");
-        }
-    }
 }
 
 fn main() {
