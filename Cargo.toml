@@ -1,7 +1,8 @@
 [workspace]
-members = [ "crates/sequencer_proof_client",
+members = [
+    "crates/sequencer_proof_client",
     "crates/zksync_os_fri_prover",
-    "crates/zksync_os_snark_prover"
+    "crates/zksync_os_snark_prover",
 ]
 resolver = "2"
 
@@ -18,10 +19,13 @@ categories = ["cryptography"]
 
 [workspace.dependencies]
 
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", tag = "v0.4.6" }
+# zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", tag = "v0.4.6" }
+zkos_wrapper = { package = "zkos-wrapper", path = "../zkos-wrapper/wrapper" }
 
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.4.5" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.4.5" }
+# zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.4.5" }
+# zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.4.5" }
+zksync_airbender_execution_utils = { package = "execution_utils", path = "../zksync-airbender/execution_utils" }
+zksync_airbender_cli = { package = "cli", path = "../zksync-airbender/tools/cli" }
 
 
 bellman = { package = "zksync_bellman", version = "=0.32.3" }
@@ -30,7 +34,7 @@ crypto_codegen = { package = "zksync_solidity_vk_codegen", version = "=0.32.3" }
 
 anyhow = "1.0"
 base64 = "0.22.1"
-bincode = {  version = "2", features = ["serde"] }
+bincode = { version = "2", features = ["serde"] }
 clap = { version = "4.5.40", features = ["derive"] }
 reqwest = { version = "0.12.19", features = ["json"] }
 serde = { version = "1.0.219", features = ["derive"] }

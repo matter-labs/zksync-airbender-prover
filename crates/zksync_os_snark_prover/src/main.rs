@@ -56,11 +56,14 @@ enum Commands {
         sequencer_url: Option<String>,
         #[clap(flatten)]
         setup: SetupOptions,
-        // #[arg(short, long, default_value = "linking-fris")]
-        // mode: SnarkMode,
         /// Number of iterations (proofs) to generate before exiting. If not specified, runs indefinitely
         #[arg(long)]
         iterations: Option<usize>,
+        /// Intermediary flag that determines if FRIs should be merged 2 at a time or multiple in one go.
+        // This will be by default false until the transition is made.
+        // The flag will be deleted altogether, once the transition is complete.
+        #[arg(long, default_value_t = false)]
+        multiple_fris: bool,
     },
 }
 
@@ -123,8 +126,8 @@ fn main() {
                     output_dir,
                     trusted_setup_file,
                 },
-            // mode,
             iterations,
+            multiple_fris,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -142,22 +145,95 @@ fn main() {
                     output_dir,
                     trusted_setup_file,
                     iterations,
+                    multiple_fris,
                 ))
                 .expect("failed whilst running SNARK prover");
         }
     }
 }
 
+fn merge_multiple_fris(
+    snark_proof_input: SnarkProofInputs,
+    verifier_binary: &Vec<u32>,
+    gpu_state: &mut GpuSharedState,
+) -> ProgramProof {
+    tracing::info!("Merging all FRIs in one go");
+
+    let proofs_count = snark_proof_input.fri_proofs.len();
+
+    let mut proofs_oracles = vec![];
+    for proof in snark_proof_input.fri_proofs {
+        let (metadata, proof_list) = proof.to_metadata_and_proof_list();
+        let oracle = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
+        proofs_oracles.push((metadata, proof_list, oracle));
+    }
+
+    let mut merged_input = vec![
+        VerifierCircuitsIdentifiers::CombinedMultipleRecursionLayers as u32,
+        proofs_count as u32,
+    ];
+
+    for (_, _, oracle) in proofs_oracles.iter() {
+        merged_input.extend(oracle);
+    }
+
+    let (mut current_proof_list, mut proof_metadata) = create_proofs_internal(
+        verifier_binary,
+        merged_input,
+        &Machine::Reduced,
+        100, // Guessing - FIXME!!
+        Some(proofs_oracles[0].0.create_prev_metadata()),
+        &mut Some(gpu_state),
+        &mut Some(0f64),
+    );
+    println!("woops");
+
+    // Let's do recursion.
+    let mut recursion_level = 0;
+
+    while current_proof_list.reduced_proofs.len() > 2 {
+        tracing::info!("Recursion step {} after fri merging", recursion_level);
+        recursion_level += 1;
+        let non_determinism_data =
+            generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
+
+        (current_proof_list, proof_metadata) = create_proofs_internal(
+            verifier_binary,
+            non_determinism_data,
+            &Machine::Reduced,
+            proof_metadata.total_proofs(),
+            Some(proof_metadata.create_prev_metadata()),
+            &mut Some(gpu_state),
+            &mut Some(0f64),
+        );
+    }
+
+    let proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
+    tracing::info!(
+        "Finished linking all proofs from {} to {}",
+        snark_proof_input.from_block_number,
+        snark_proof_input.to_block_number
+    );
+    proof
+}
+
 fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,
     gpu_state: &mut GpuSharedState,
+    multiple_fris: bool,
 ) -> ProgramProof {
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
         return snark_proof_input.fri_proofs[0].clone();
     }
     tracing::info!("Starting proof merging");
+
+    if multiple_fris {
+        return merge_multiple_fris(snark_proof_input, verifier_binary, gpu_state);
+    }
+
+    tracing::info!("Merging FRIs 1 by 1");
 
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
@@ -245,6 +321,7 @@ async fn run_linking_fri_snark(
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
+    multiple_fris: bool,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
     let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
@@ -303,7 +380,12 @@ async fn run_linking_fri_snark(
         #[cfg(not(feature = "gpu"))]
         let mut gpu_state = GpuSharedState::new(&verifier_binary);
         tracing::info!("Finished initializing GPU state");
-        let proof = merge_fris(snark_proof_input, &verifier_binary, &mut gpu_state);
+        let proof = merge_fris(
+            snark_proof_input,
+            &verifier_binary,
+            &mut gpu_state,
+            multiple_fris,
+        );
 
         // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
         #[cfg(feature = "gpu")]
