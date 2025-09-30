@@ -1,6 +1,11 @@
+use std::time::Duration;
+
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use zksync_os_snark_prover::{generate_verification_key, init_tracing, run_linking_fri_snark};
+use tokio::sync::watch;
+use zksync_os_snark_prover::{
+    generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
+};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -43,6 +48,9 @@ enum Commands {
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
         #[arg(long)]
         iterations: Option<usize>,
+        /// Port to run the Prometheus metrics server on
+        #[arg(long, default_value = "3124")]
+        prometheus_port: u16,
     },
 }
 
@@ -75,6 +83,7 @@ fn main() {
                 },
             // mode,
             iterations,
+            prometheus_port,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -85,15 +94,42 @@ fn main() {
                 .enable_all()
                 .build()
                 .expect("failed to build tokio context");
-            runtime
-                .block_on(run_linking_fri_snark(
-                    binary_path,
-                    sequencer_url,
-                    output_dir,
-                    trusted_setup_file,
-                    iterations,
-                ))
-                .expect("failed whilst running SNARK prover");
+
+            let (stop_sender, stop_receiver) = watch::channel(false);
+
+            runtime.block_on(async move {
+                let metrics_handle = tokio::spawn(async move {
+                    metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
+                });
+
+                tokio::select! {
+                    result = run_linking_fri_snark(
+                        binary_path,
+                        sequencer_url,
+                        output_dir,
+                        trusted_setup_file,
+                        iterations,
+                    ) => {
+                        tracing::info!("SNARK prover finished");
+                        result.expect("SNARK prover finished with error");
+                        stop_sender.send(true).expect("failed to send stop signal");
+                    }
+                    _ = tokio::signal::ctrl_c() => {
+                        tracing::info!("Stop request received, shutting down");
+                    },
+                }
+
+                match tokio::time::timeout(Duration::from_secs(10), metrics_handle).await {
+                    Ok(join_result) => {
+                        if let Err(join_err) = join_result {
+                            tracing::warn!("metrics task panicked or was cancelled: {join_err}");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Metrics exporter timed out, aborting: {e}");
+                    }
+                }
+            });
         }
     }
 }

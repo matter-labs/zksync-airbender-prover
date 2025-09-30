@@ -8,6 +8,10 @@ use std::fmt;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
+use crate::metrics::SEQUENCER_CLIENT_METRICS;
+
+mod metrics;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
 pub struct L2BlockNumber(pub u32);
 
