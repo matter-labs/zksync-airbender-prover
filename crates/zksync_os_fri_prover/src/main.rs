@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use clap::Parser;
 use tokio::sync::watch;
-use zksync_os_fri_prover::metrics;
+use zksync_os_fri_prover::{init_tracing, metrics};
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
+    init_tracing();
     let args = zksync_os_fri_prover::Args::parse();
 
     let (stop_sender, stop_receiver) = watch::channel(false);

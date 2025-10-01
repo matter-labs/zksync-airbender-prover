@@ -58,7 +58,6 @@ pub fn init_tracing() {
 }
 
 pub async fn run(args: Args) {
-    init_tracing();
     let client = SequencerProofClient::new(args.base_url);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
