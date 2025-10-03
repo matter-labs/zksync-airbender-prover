@@ -6,6 +6,8 @@ Assuming you want to run the entire stack (sequencer & prover), you'll need a ma
 
 ## Setting up the machine
 
+> NOTE: Check `scripts` section, if you want to speedrun this.
+
 ### 1. Install rust
 
 ```bash
@@ -103,6 +105,7 @@ cargo run --release --features gpu --bin zksync_os_fri_prover
 ```bash
 # in a new terminal/session
 cd zksync-os-server/loadbase
+cargo run --release -- --rpc-url 'http://127.0.0.1:3050' --rich-privkey 0x7726827caac94a7f9e1b160f7ea819f172f7b6f9d2a97f992c38edeab82d4110 --duration 240m --max-in-flight 1 --wallets 1 --dest random
 ```
 
 > NOTE: If you generate too many batches and there's no FRI prover to take them, the system will backpressure until FRI proofs are generated. Put differently, the sequencer will keep in memory a specific number of FRI inputs before it backpressures.
@@ -131,4 +134,8 @@ If you want to troubleshoot at any layer, the above workflow allows you to go th
 
 ## Scripts
 
-If you navigate to `scripts/` in the root of this repo, there's `scripts/ubuntu_setup.sh`. It already does all the setup up to point 7 (inclusive).
+If you navigate to `scripts/` in the root of this repo, there's `scripts/ubuntu_setup.sh`. It already does all the setup up to point 7 (inclusive). You can get a machine and start everything with:
+
+```bash
+curl -sL https://raw.githubusercontent.com/matter-labs/zksync-airbender-prover/main/scripts/ubuntu_setup.sh | bash
+```

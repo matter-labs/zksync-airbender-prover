@@ -26,7 +26,8 @@ echo "Installing Foundry..."
 if ! command -v foundryup &> /dev/null
 then
     curl -L https://foundry.paradigm.xyz | bash
-    source "$HOME/.bashrc"
+    # Source foundry's env script directly instead of the whole bashrc
+    source "$HOME/.foundry/env"
     "$HOME/.foundry/bin/foundryup"
     echo "Foundry installed successfully."
 else
@@ -63,8 +64,11 @@ fi
 echo "Verifying NVIDIA driver status..."
 nvidia-smi
 
-# Source bashrc to make CUDA available for the rest of the script
-source "$HOME/.bashrc"
+# Export CUDA variables for the current script session. This is more reliable than sourcing .bashrc.
+echo "Exporting CUDA variables for this session..."
+export CUDA_HOME=/usr/local/cuda
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64
+export PATH=${PATH}:${CUDA_HOME}/bin
 
 # --- 5. Compile era-bellman-cuda ---
 echo "Cloning and compiling era-bellman-cuda..."
@@ -73,24 +77,26 @@ if [ ! -d "era-bellman-cuda" ]; then
 else
     echo "era-bellman-cuda repository already exists. Skipping clone."
 fi
+# Now cmake will find the CUDA compiler (nvcc) via the updated PATH
 cmake -Bera-bellman-cuda/build -Sera-bellman-cuda/ -DCMAKE_BUILD_TYPE=Release
 cmake --build era-bellman-cuda/build/
 
 echo "Adding BELLMAN_CUDA_DIR to ~/.bashrc..."
+BELLMAN_DIR="$(pwd)/era-bellman-cuda"
 # Check if the variable is already set
 if ! grep -q "BELLMAN_CUDA_DIR" "$HOME/.bashrc"; then
     {
         echo ''
         echo '# Bellman CUDA Directory'
-        echo "export BELLMAN_CUDA_DIR=$(pwd)/era-bellman-cuda"
+        echo "export BELLMAN_CUDA_DIR=${BELLMAN_DIR}"
     } >> "$HOME/.bashrc"
     echo "BELLMAN_CUDA_DIR configured."
 else
     echo "BELLMAN_CUDA_DIR is already set in ~/.bashrc."
 fi
 
-# Source bashrc again to apply the new env var
-source "$HOME/.bashrc"
+# Export the variable for the current script session
+export BELLMAN_CUDA_DIR=${BELLMAN_DIR}
 
 # --- 6. Clone Repositories ---
 echo "Cloning zksync-os-server and zksync-airbender-prover..."
