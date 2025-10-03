@@ -25,13 +25,16 @@ sudo apt-get install -y build-essential libssl-dev pkg-config clang cmake
 echo "Installing Foundry..."
 if ! command -v foundryup &> /dev/null
 then
+    # This command downloads the 'foundryup' installer.
     curl -L https://foundry.paradigm.xyz | bash
-    # Source foundry's env script directly instead of the whole bashrc
-    source "$HOME/.foundry/env"
+    # Now, run 'foundryup' using its full path to install Foundry itself.
+    # This step creates the necessary directory structure, including the 'env' file.
     "$HOME/.foundry/bin/foundryup"
+    # With Foundry installed, we can source its environment for the current session.
+    source "$HOME/.foundry/env"
     echo "Foundry installed successfully."
 else
-    echo "Foundry is already installed."
+    echo "Foundry is already installed, updating..."
     "$HOME/.foundry/bin/foundryup"
 fi
 
@@ -129,3 +132,4 @@ echo "------------------------------------------------"
 echo "Setup complete!"
 echo "Please run 'source ~/.bashrc' or restart your terminal to apply all changes."
 echo "------------------------------------------------"
+
