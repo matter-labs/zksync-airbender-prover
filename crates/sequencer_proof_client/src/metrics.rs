@@ -18,5 +18,6 @@ pub struct SequencerClientMetrics {
     pub time_taken: Family<Method, Histogram>,
 }
 
+#[vise::register]
 pub(crate) static SEQUENCER_CLIENT_METRICS: vise::Global<SequencerClientMetrics> =
     vise::Global::new();

@@ -41,4 +41,5 @@ pub struct SnarkProverMetrics {
     pub latest_proven_block: Gauge,
 }
 
+#[vise::register]
 pub(crate) static SNARK_PROVER_METRICS: vise::Global<SnarkProverMetrics> = vise::Global::new();
