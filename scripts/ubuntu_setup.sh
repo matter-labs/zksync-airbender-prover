@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+echo "Starting the ZKsync development machine setup..."
+
+# --- 1. Install Rust ---
+echo "Installing Rust..."
+if ! command -v rustc &> /dev/null
+then
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
+    echo "Rust installed successfully."
+else
+    echo "Rust is already installed."
+fi
+
+# --- 2. Install Development Packages ---
+echo "Installing development packages (build-essential, libssl-dev, etc.)..."
+sudo apt-get update
+sudo apt-get install -y build-essential libssl-dev pkg-config clang cmake
+
+# --- 3. Install Foundry ---
+echo "Installing Foundry..."
+if ! command -v foundryup &> /dev/null
+then
+    curl -L https://foundry.paradigm.xyz | bash
+    source "$HOME/.bashrc"
+    "$HOME/.foundry/bin/foundryup"
+    echo "Foundry installed successfully."
+else
+    echo "Foundry is already installed."
+    "$HOME/.foundry/bin/foundryup"
+fi
+
+
+# --- 4. Install CUDA ---
+echo "Installing CUDA Toolkit..."
+# Check if nvidia-smi is available to prevent re-installation
+if ! command -v nvidia-smi &> /dev/null
+then
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+    sudo dpkg -i cuda-keyring_1.1-1_all.deb
+    sudo apt-get update
+    sudo apt-get install -y cuda-toolkit-12-9
+    sudo apt-get install -y nvidia-open
+    rm cuda-keyring_1.1-1_all.deb
+
+    echo "Adding CUDA environment variables to ~/.bashrc..."
+    {
+        echo ''
+        echo '# CUDA Environment Variables'
+        echo 'export CUDA_HOME=/usr/local/cuda'
+        echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64'
+        echo 'export PATH=$PATH:$CUDA_HOME/bin'
+    } >> "$HOME/.bashrc"
+    echo "CUDA installed and configured."
+else
+    echo "NVIDIA driver/CUDA appears to be already installed. Skipping installation."
+fi
+
+echo "Verifying NVIDIA driver status..."
+nvidia-smi
+
+# Source bashrc to make CUDA available for the rest of the script
+source "$HOME/.bashrc"
+
+# --- 5. Compile era-bellman-cuda ---
+echo "Cloning and compiling era-bellman-cuda..."
+if [ ! -d "era-bellman-cuda" ]; then
+    git clone https://github.com/matter-labs/era-bellman-cuda.git
+else
+    echo "era-bellman-cuda repository already exists. Skipping clone."
+fi
+cmake -Bera-bellman-cuda/build -Sera-bellman-cuda/ -DCMAKE_BUILD_TYPE=Release
+cmake --build era-bellman-cuda/build/
+
+echo "Adding BELLMAN_CUDA_DIR to ~/.bashrc..."
+# Check if the variable is already set
+if ! grep -q "BELLMAN_CUDA_DIR" "$HOME/.bashrc"; then
+    {
+        echo ''
+        echo '# Bellman CUDA Directory'
+        echo "export BELLMAN_CUDA_DIR=$(pwd)/era-bellman-cuda"
+    } >> "$HOME/.bashrc"
+    echo "BELLMAN_CUDA_DIR configured."
+else
+    echo "BELLMAN_CUDA_DIR is already set in ~/.bashrc."
+fi
+
+# Source bashrc again to apply the new env var
+source "$HOME/.bashrc"
+
+# --- 6. Clone Repositories ---
+echo "Cloning zksync-os-server and zksync-airbender-prover..."
+if [ ! -d "zksync-os-server" ]; then
+    git clone https://github.com/matter-labs/zksync-os-server.git
+else
+    echo "zksync-os-server repository already exists. Skipping clone."
+fi
+
+if [ ! -d "zksync-airbender-prover" ]; then
+    git clone https://github.com/matter-labs/zksync-airbender-prover.git
+else
+    echo "zksync-airbender-prover repository already exists. Skipping clone."
+fi
+
+# --- 7. Download CRS File ---
+echo "Downloading CRS file..."
+CRS_FILE="zksync-airbender-prover/crs/setup_compact.key"
+if [ ! -f "$CRS_FILE" ]; then
+    # Ensure the directory exists
+    mkdir -p zksync-airbender-prover/crs
+    curl https://storage.googleapis.com/matterlabs-setup-keys-us/setup-keys/setup_compact.key --output $CRS_FILE
+    echo "CRS file downloaded successfully."
+else
+    echo "CRS file already exists. Skipping download."
+fi
+
+echo ""
+echo "------------------------------------------------"
+echo "Setup complete!"
+echo "Please run 'source ~/.bashrc' or restart your terminal to apply all changes."
+echo "------------------------------------------------"
