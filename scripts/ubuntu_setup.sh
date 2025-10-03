@@ -30,8 +30,7 @@ then
     # Now, run 'foundryup' using its full path to install Foundry itself.
     # This step creates the necessary directory structure, including the 'env' file.
     "$HOME/.foundry/bin/foundryup"
-    # With Foundry installed, we can source its environment for the current session.
-    source "$HOME/.foundry/env"
+    export PATH="$PATH:/home/evl/.foundry/bin"
     echo "Foundry installed successfully."
 else
     echo "Foundry is already installed, updating..."
