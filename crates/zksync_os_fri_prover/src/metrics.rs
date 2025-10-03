@@ -32,4 +32,5 @@ pub struct FriProverMetrics {
     pub latest_proven_block: Gauge,
 }
 
+#[vise::register]
 pub(crate) static FRI_PROVER_METRICS: vise::Global<FriProverMetrics> = vise::Global::new();
