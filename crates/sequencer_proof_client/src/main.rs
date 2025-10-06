@@ -10,7 +10,13 @@ use zksync_sequencer_proof_client::{
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// Sequencer URL to submit proofs to
-    #[arg(short, long, global = true, value_name = "URL")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        value_name = "URL",
+        default_value = "http://localhost:3124"
+    )]
     url: Option<String>,
 
     /// Activate verbose logging (`-v`, `-vv`, ...)
@@ -145,12 +151,17 @@ async fn main() -> Result<()> {
             match client.pick_snark_job().await? {
                 Some(snark_proof_inputs) => {
                     tracing::info!(
-                        "Picked SNARK job for blocks [{}, {}], saved jobs to path {path}",
+                        "Received SNARK job for blocks [{}, {}], saving to disk...",
                         snark_proof_inputs.from_block_number,
                         snark_proof_inputs.to_block_number
                     );
-                    let mut dst = std::fs::File::create(path).unwrap();
+                    let mut dst = std::fs::File::create(&path).unwrap();
                     serde_json::to_writer_pretty(&mut dst, &snark_proof_inputs).unwrap();
+                    tracing::info!(
+                        "Saved SNARK job for blocks [{}, {}] to path {path}",
+                        snark_proof_inputs.from_block_number,
+                        snark_proof_inputs.to_block_number
+                    );
                 }
                 None => {
                     tracing::info!("No SNARK proof jobs available at the moment.");
