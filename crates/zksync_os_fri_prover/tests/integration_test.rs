@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use zksync_airbender_cli::prover_utils::{load_binary_from_path, GpuSharedState};
 use zksync_os_fri_prover::{init_tracing, run_inner};
 use zksync_sequencer_proof_client::{
@@ -45,26 +46,27 @@ async fn test_fri_prover() {
     assert!(success);
 }
 
-#[tokio::test]
-#[ignore]
-async fn serialize_fri_job() {
-    init_tracing();
-    let client = SequencerProofClient::new("http://localhost:3124".to_string());
-    let file_based_client = FileBasedProofClient::default();
-
-    let (block_number, prover_input) = match client.pick_fri_job().await {
+pub async fn peek_fri_job_to_file(
+    client: &SequencerProofClient,
+    file_based_client: &FileBasedProofClient,
+    block_number: u32,
+) -> anyhow::Result<()> {
+    let (block_number, prover_input) = match client.peek_fri_job(block_number).await {
         Err(err) => {
             tracing::error!("Error fetching next prover job: {err}");
-            return;
+            return Err(err);
         }
         Ok(Some(next_block)) => next_block,
         Ok(None) => {
             tracing::info!("No pending blocks to prove");
-            return;
+            return Ok(());
         }
     };
 
     file_based_client
         .serialize_fri_job(block_number, prover_input)
-        .unwrap();
+        .context(format!(
+            "Failed to serialize fri job for block {block_number}"
+        ))?;
+    Ok(())
 }

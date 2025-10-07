@@ -81,8 +81,14 @@ pub struct SnarkProofInputs {
 
 #[async_trait]
 pub trait ProofClient {
+    async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
     async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()>;
+    async fn peek_fri_proofs(
+        &self,
+        from_block_number: u32,
+        to_block_number: u32,
+    ) -> anyhow::Result<Option<SnarkProofInputs>>;
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
     async fn submit_snark_proof(
         &self,

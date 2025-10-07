@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use anyhow::Context;
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
@@ -59,26 +60,31 @@ async fn test_snark_prover() {
     assert!(success);
 }
 
-#[tokio::test]
-#[ignore]
-async fn serialize_snark_job() {
-    init_tracing();
-    let client = SequencerProofClient::new("http://localhost:3124".to_string());
-    let file_based_client = FileBasedProofClient::default();
-
-    let snark_proof_inputs = match client.pick_snark_job().await {
+pub async fn peek_fri_proofs_to_file(
+    client: &SequencerProofClient,
+    file_based_client: &FileBasedProofClient,
+    from_block_number: u32,
+    to_block_number: u32,
+) -> anyhow::Result<()> {
+    let snark_proof_inputs = match client
+        .peek_fri_proofs(from_block_number, to_block_number)
+        .await
+    {
         Err(err) => {
             tracing::error!("Error fetching next snark job: {err}");
-            return;
+            return Err(err);
         }
         Ok(Some(snark_proof_inputs)) => snark_proof_inputs,
         Ok(None) => {
             tracing::info!("No pending snark jobs");
-            return;
+            return Ok(());
         }
     };
 
     file_based_client
         .serialize_snark_job(snark_proof_inputs)
-        .unwrap();
+        .context(format!(
+            "Failed to serialize snark job for blocks {from_block_number} to {to_block_number}"
+        ))?;
+    Ok(())
 }

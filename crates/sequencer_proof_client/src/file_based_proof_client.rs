@@ -84,6 +84,10 @@ impl FileBasedProofClient {
 
 #[async_trait]
 impl ProofClient for FileBasedProofClient {
+    async fn peek_fri_job(&self, _block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+        unimplemented!()
+    }
+
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let path = self.base_dir.join("fri_job.json");
         let file = std::fs::File::open(path).context("Failed to open fri_job.json")?;
@@ -105,6 +109,14 @@ impl ProofClient for FileBasedProofClient {
         serde_json::to_writer_pretty(&mut file, &payload)
             .context("Failed to write fri_proof.json")?;
         Ok(())
+    }
+
+    async fn peek_fri_proofs(
+        &self,
+        _from_block_number: u32,
+        _to_block_number: u32,
+    ) -> anyhow::Result<Option<SnarkProofInputs>> {
+        unimplemented!()
     }
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
