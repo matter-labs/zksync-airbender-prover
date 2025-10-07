@@ -23,7 +23,7 @@ proof-compression = {workspace = true, optional = true}
 #proof_cache = { path = "../proof_cache" }
 #sequencer_proof_client = { path = "../sequencer_proof_client" }
 
-tokio.workspace = true
+tokio = { workspace = true, features = ["full"] }
 serde_json.workspace = true
 
 serde.workspace = true
@@ -32,6 +32,8 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap.workspace = true
+vise.workspace = true
+vise-exporter.workspace = true
 
 [features]
 gpu = ["zksync_airbender_cli/gpu", "zkos_wrapper/gpu", "proof-compression/gpu"]

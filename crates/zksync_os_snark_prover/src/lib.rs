@@ -22,6 +22,10 @@ use zksync_sequencer_proof_client::{
     sequencer_proof_client::SequencerProofClient, ProofClient, SnarkProofInputs,
 };
 
+use crate::metrics::SNARK_PROVER_METRICS;
+
+pub mod metrics;
+
 pub fn init_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     FmtSubscriber::builder().with_env_filter(filter).init();
@@ -49,7 +53,7 @@ pub fn generate_verification_key(
             }
         }
         Err(e) => {
-            tracing::info!("Error generating keys: {e}");
+            tracing::error!("Error generating keys: {e}");
         }
     }
 }
@@ -59,11 +63,17 @@ pub fn merge_fris(
     verifier_binary: &Vec<u32>,
     gpu_state: &mut GpuSharedState,
 ) -> ProgramProof {
+    SNARK_PROVER_METRICS
+        .fri_proofs_merged
+        .set(snark_proof_input.fri_proofs.len() as i64);
+
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
         return snark_proof_input.fri_proofs[0].clone();
     }
     tracing::info!("Starting proof merging");
+
+    let started_at = Instant::now();
 
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
@@ -120,6 +130,11 @@ pub fn merge_fris(
         proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
         tracing::info!("Finished linking proofs up to block {}", up_to_block);
     }
+
+    SNARK_PROVER_METRICS
+        .time_taken_merge_fri
+        .observe(started_at.elapsed().as_secs_f64());
+
     // TODO: We can do a recursion step here as well, IIUC
     tracing::info!(
         "Finishing linking all proofs from {} to {}",
@@ -155,6 +170,8 @@ pub async fn run_linking_fri_snark(
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
     let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
 
+    let startup_started_at = Instant::now();
+
     tracing::info!("Starting zksync_os_snark_prover");
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
@@ -167,10 +184,14 @@ pub async fn run_linking_fri_snark(
         precomputations
     };
 
+    SNARK_PROVER_METRICS
+        .time_taken_startup
+        .observe(startup_started_at.elapsed().as_secs_f64());
+
     let mut proof_count = 0;
 
     loop {
-        let success = run_inner(
+        let proof_generated = run_inner(
             &sequencer_client,
             &verifier_binary,
             output_dir.clone(),
@@ -181,13 +202,11 @@ pub async fn run_linking_fri_snark(
         .await
         .expect("Failed to run SNARK prover");
 
-        if success {
-            proof_count += 1;
-        }
+        proof_count += proof_generated as usize;
 
-        if let Some(max_iterations) = iterations {
-            if proof_count >= max_iterations {
-                tracing::info!("Reached maximum iterations ({max_iterations}), exiting...");
+        if let Some(max_proofs_generated) = iterations {
+            if proof_count >= max_proofs_generated {
+                tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...");
                 return Ok(());
             }
         }
@@ -250,6 +269,8 @@ pub async fn run_inner<P: ProofClient>(
     drop(gpu_state);
 
     tracing::info!("Creating final proof before SNARKification");
+
+    let final_proof_started_at = Instant::now();
     let final_proof = create_final_proofs_from_program_proof(
         proof,
         RecursionStrategy::UseReducedLog23Machine,
@@ -261,6 +282,9 @@ pub async fn run_inner<P: ProofClient>(
         // NOTE: use this as false, if you want to run on a small GPU
         true,
     );
+    SNARK_PROVER_METRICS
+        .time_taken_final_proof
+        .observe(final_proof_started_at.elapsed().as_secs_f64());
 
     tracing::info!("Finished creating final proof");
     let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
@@ -283,6 +307,12 @@ pub async fn run_inner<P: ProofClient>(
                 snark_time.elapsed(),
                 proof_time.elapsed()
             );
+            SNARK_PROVER_METRICS
+                .time_taken_snark
+                .observe(snark_time.elapsed().as_secs_f64());
+            SNARK_PROVER_METRICS
+                .time_taken_full
+                .observe(proof_time.elapsed().as_secs_f64());
         }
         Err(e) => {
             tracing::error!("failed to SNARKify proof: {e:?}");
@@ -305,6 +335,10 @@ pub async fn run_inner<P: ProofClient>(
                 start_block,
                 end_block
             );
+
+            SNARK_PROVER_METRICS
+                .latest_proven_block
+                .set(end_block.0 as i64);
         }
         Err(e) => {
             tracing::error!("Failed to submit SNARK job due to {e:?}, skipping");

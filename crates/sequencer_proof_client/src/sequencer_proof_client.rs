@@ -1,8 +1,11 @@
-use crate::L2BlockNumber;
+use std::time::Instant;
+
+use crate::metrics::Method;
 use crate::{
     GetSnarkProofPayload, NextFriProverJobPayload, ProofClient, SnarkProofInputs,
     SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
+use crate::{L2BlockNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -72,18 +75,24 @@ impl ProofClient for SequencerProofClient {
     /// Returns `Ok(None)` if there's no block pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let url = format!("{}/prover-jobs/FRI/pick", self.url);
+
+        let started_at = Instant::now();
+
         let resp = self.client.post(&url).send().await?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickFri]
+            .observe(started_at.elapsed().as_secs_f64());
 
         match resp.status() {
             StatusCode::OK => {
                 let body: NextFriProverJobPayload = resp.json().await?;
                 let data = STANDARD
                     .decode(&body.prover_input)
-                    .map_err(|e| anyhow!("Failed to decode block data: {}", e))?;
+                    .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
                 Ok(Some((body.block_number, data)))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            s => Err(anyhow!("Unexpected status {} when fetching next block", s)),
+            s => Err(anyhow!("Unexpected status {s} when fetching next block")),
         }
     }
 
@@ -96,7 +105,12 @@ impl ProofClient for SequencerProofClient {
             proof,
         };
 
+        let started_at = Instant::now();
+
         let resp = self.client.post(&url).json(&payload).send().await?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitFri]
+            .observe(started_at.elapsed().as_secs_f64());
 
         if resp.status().is_success() {
             Ok(())
@@ -130,7 +144,14 @@ impl ProofClient for SequencerProofClient {
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = format!("{}/prover-jobs/SNARK/pick", self.url);
+
+        let started_at = Instant::now();
+
         let resp = self.client.post(&url).send().await?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickSnark]
+            .observe(started_at.elapsed().as_secs_f64());
+
         match resp.status() {
             StatusCode::OK => {
                 let get_snark_proof_payload = resp.json::<GetSnarkProofPayload>().await?;
@@ -141,7 +162,7 @@ impl ProofClient for SequencerProofClient {
                 ))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            _ => Err(anyhow!("Failed to pick SNARK job: {:?}", resp)),
+            _ => Err(anyhow!("Failed to pick SNARK job: {resp:?}")),
         }
     }
 
@@ -152,6 +173,8 @@ impl ProofClient for SequencerProofClient {
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
         let url = format!("{}/prover-jobs/SNARK/submit", self.url);
+
+        let started_at = Instant::now();
 
         let serialized_proof = self
             .serialize_snark_proof(&proof)
@@ -168,6 +191,9 @@ impl ProofClient for SequencerProofClient {
             .send()
             .await?
             .error_for_status()?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitSnark]
+            .observe(started_at.elapsed().as_secs_f64());
         Ok(())
     }
 }

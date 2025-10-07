@@ -1,6 +1,6 @@
 use std::{
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::Instant,
 };
 
 use clap::Parser;
@@ -25,16 +25,13 @@ use zksync_sequencer_proof_client::sequencer_proof_client::SequencerProofClient;
 pub struct Args {
     /// Max SNARK latency in seconds (default value - 1 hour)
     #[arg(long, default_value = "3600", conflicts_with = "max_fris_per_snark")]
-    max_snark_latency: Option<u64>,
+    pub max_snark_latency: Option<u64>,
     /// Max amount of FRI proofs per SNARK (default value - 100)
     #[arg(long, default_value = "100", conflicts_with = "max_snark_latency")]
-    max_fris_per_snark: Option<usize>,
+    pub max_fris_per_snark: Option<usize>,
     /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
     #[arg(short, long, default_value = "http://localhost:3124")]
     pub base_url: String,
-    /// Enable logging and use the logging-enabled binary
-    #[arg(long)]
-    pub enabled_logging: bool,
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
@@ -47,7 +44,7 @@ pub struct Args {
     /// Path to the trusted setup file for SNARK prover
     #[arg(long)]
     pub trusted_setup_file: String,
-    /// Number of iterations (SNARK proofs) to generate before exiting
+    /// Number of iterations before exiting. Only successfully generated SNARK proofs count. If not specified, runs indefinitely
     #[arg(long)]
     pub iterations: Option<usize>,
     /// Path to the output file for FRI proofs
@@ -61,12 +58,6 @@ pub fn init_tracing() {
 }
 
 pub async fn run(args: Args) {
-    init_tracing();
-    tracing::info!(
-        "running without logging, disregarding enabled_logging flag = {}",
-        args.enabled_logging
-    );
-
     let client = SequencerProofClient::new(args.base_url);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -95,7 +86,7 @@ pub async fn run(args: Args) {
     );
 
     let mut snark_proof_count = 0;
-    let mut snark_latency = SystemTime::now();
+    let mut snark_latency = Instant::now();
 
     loop {
         let mut fri_proof_count = 0;
@@ -112,7 +103,7 @@ pub async fn run(args: Args) {
         // Run FRI prover until we hit one of the limits
         tracing::info!("Running FRI prover");
         loop {
-            let success = zksync_os_fri_prover::run_inner(
+            let proof_generated = zksync_os_fri_prover::run_inner(
                 &client,
                 &binary,
                 args.circuit_limit,
@@ -122,12 +113,10 @@ pub async fn run(args: Args) {
             .await
             .expect("Failed to run FRI prover");
 
-            if success {
-                fri_proof_count += 1;
-            }
+            fri_proof_count += proof_generated as usize;
 
             if let Some(max_snark_latency) = args.max_snark_latency {
-                if snark_latency.elapsed().unwrap().as_secs() >= max_snark_latency {
+                if snark_latency.elapsed().as_secs() >= max_snark_latency {
                     tracing::info!("SNARK latency reached max_snark_latency ({max_snark_latency} seconds), exiting FRI prover");
                     break;
                 }
@@ -145,7 +134,7 @@ pub async fn run(args: Args) {
         // Here we do exactly one SNARK proof
         tracing::info!("Running SNARK prover");
         loop {
-            let success = zksync_os_snark_prover::run_inner(
+            let proof_generated = zksync_os_snark_prover::run_inner(
                 &client,
                 &verifier_binary,
                 args.output_dir.clone(),
@@ -156,11 +145,11 @@ pub async fn run(args: Args) {
             .await
             .expect("Failed to run SNARK prover");
 
-            if success {
+            if proof_generated {
                 // Increment SNARK proof counter
                 tracing::info!("Successfully run SNARK prover");
-                snark_proof_count += 1;
-                snark_latency = SystemTime::now();
+                snark_proof_count += proof_generated as usize;
+                snark_latency = Instant::now();
                 break;
             }
         }
