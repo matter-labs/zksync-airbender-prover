@@ -148,7 +148,6 @@ pub async fn run_inner<P: ProofClient>(
     #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
     path: Option<PathBuf>,
 ) -> anyhow::Result<bool> {
-    let started_at = Instant::now();
 
     let (block_number, prover_input) = match client.pick_fri_job().await {
         Err(err) => {
@@ -163,6 +162,8 @@ pub async fn run_inner<P: ProofClient>(
             return Ok(false);
         }
     };
+
+    let started_at = Instant::now();
 
     // make prover_input (Vec<u8>) into Vec<u32>:
     let prover_input: Vec<u32> = prover_input
