@@ -27,7 +27,7 @@ pub async fn start_metrics_exporter(
 #[derive(Debug, Clone, Metrics)]
 #[metrics(prefix = "fri_prover")]
 pub struct FriProverMetrics {
-    #[metrics(buckets = vise::Buckets::linear(1.0..=5.0, 0.5), unit = vise::Unit::Seconds)]
+    #[metrics(buckets = vise::Buckets::linear(0.5..=3.0, 0.2), unit = vise::Unit::Seconds)]
     pub time_taken: Histogram,
     pub latest_proven_block: Gauge,
 }
