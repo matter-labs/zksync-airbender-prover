@@ -63,11 +63,11 @@ impl ProofClient for SequencerProofClient {
                 let body: NextFriProverJobPayload = resp.json().await?;
                 let data = STANDARD
                     .decode(&body.prover_input)
-                    .map_err(|e| anyhow!("Failed to decode block data: {}", e))?;
+                    .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
                 Ok(Some((body.block_number, data)))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            s => Err(anyhow!("Unexpected status {} when peeking next block", s)),
+            s => Err(anyhow!("Unexpected status {s} when peeking next block")),
         }
     }
 
@@ -138,7 +138,7 @@ impl ProofClient for SequencerProofClient {
                 Ok(Some(body.try_into()?))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            s => Err(anyhow!("Unexpected status {} when peeking FRI proofs", s)),
+            s => Err(anyhow!("Unexpected status {s} when peeking FRI proofs")),
         }
     }
 

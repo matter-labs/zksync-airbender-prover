@@ -46,6 +46,42 @@ async fn test_fri_prover() {
     assert!(success);
 }
 
+#[tokio::test]
+async fn test_peek_fri_job_to_file() {
+    init_tracing();
+    let client = SequencerProofClient::new("https://zksync-os-stage-rollup-leader.zksync.dev/".to_string());
+    let file_based_client = FileBasedProofClient::new("../../peek_from_stage_rollup/".to_string());
+    let block_number = 663;
+    peek_fri_job_to_file(&client, &file_based_client, block_number).await.expect("Failed to peek fri job to file");
+}
+
+#[tokio::test]
+async fn test_pick_fri_job_to_file() {
+    init_tracing();
+    let client = SequencerProofClient::new("https://zksync-os-stage-rollup-leader.zksync.dev/".to_string());
+    let file_based_client = FileBasedProofClient::new("../../pick_from_stage_rollup/".to_string());
+    
+    let (block_number, prover_input) = match client.pick_fri_job().await {
+        Err(err) => {
+            tracing::error!("Error fetching next prover job: {err}");
+            return;
+        }
+        Ok(Some(next_block)) => next_block,
+        Ok(None) => {
+            tracing::info!("No pending blocks to prove");
+            return;
+        }
+    };
+
+    file_based_client
+        .serialize_fri_job(block_number, prover_input)
+        .context(format!(
+            "Failed to serialize fri job for block {block_number}"
+        )).expect("Failed to serialize fri job to file");
+
+    tracing::info!("Picked FRI job for block {block_number}");
+}
+
 pub async fn peek_fri_job_to_file(
     client: &SequencerProofClient,
     file_based_client: &FileBasedProofClient,
