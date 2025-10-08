@@ -62,6 +62,9 @@ pub fn generate_verification_key(
 }
 
 pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> ProgramProof {
+    SNARK_PROVER_METRICS
+        .fri_proofs_merged
+        .set(snark_proof_input.fri_proofs.len() as i64);
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
         return snark_proof_input.fri_proofs[0].clone();
@@ -316,6 +319,10 @@ pub async fn run_inner<P: ProofClient>(
                 start_block,
                 end_block
             );
+
+            SNARK_PROVER_METRICS
+                .latest_proven_block
+                .set(end_block.0 as i64);
         }
         Err(e) => {
             tracing::error!("Failed to submit SNARK job due to {e:?}, skipping");

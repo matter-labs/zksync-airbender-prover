@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -145,6 +148,8 @@ pub async fn run_inner<P: ProofClient>(
     #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
     path: Option<PathBuf>,
 ) -> anyhow::Result<bool> {
+    let started_at = Instant::now();
+
     let (block_number, prover_input) = match client.pick_fri_job().await {
         Err(err) => {
             tracing::error!("Error fetching next prover job: {err}");
@@ -183,6 +188,10 @@ pub async fn run_inner<P: ProofClient>(
     FRI_PROVER_METRICS
         .latest_proven_block
         .set(block_number as i64);
+
+    FRI_PROVER_METRICS
+        .time_taken
+        .observe(started_at.elapsed().as_secs_f64());
 
     match client.submit_fri_proof(block_number, proof_b64).await {
         Ok(_) => tracing::info!(
