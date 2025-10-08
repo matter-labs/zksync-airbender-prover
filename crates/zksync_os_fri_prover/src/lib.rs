@@ -148,7 +148,6 @@ pub async fn run_inner<P: ProofClient>(
     #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
     path: Option<PathBuf>,
 ) -> anyhow::Result<bool> {
-
     let (block_number, prover_input) = match client.pick_fri_job().await {
         Err(err) => {
             tracing::error!("Error fetching next prover job: {err}");
