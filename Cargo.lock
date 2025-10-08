@@ -876,6 +876,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "debugging_cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "cli",
+ "execution_utils",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zkos-wrapper",
+ "zksync_os_snark_prover",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

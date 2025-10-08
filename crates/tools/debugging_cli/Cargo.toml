@@ -1,0 +1,24 @@
+[package]
+name = "debugging_cli"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde.workspace = true
+clap.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde_json.workspace = true
+# TODO: Move this in workspace and update everywhere else it's used like this
+zksync_os_snark_prover = { path = "../../zksync_os_snark_prover" }
+zksync_airbender_cli.workspace = true
+zksync_airbender_execution_utils.workspace = true
+zkos_wrapper.workspace = true
