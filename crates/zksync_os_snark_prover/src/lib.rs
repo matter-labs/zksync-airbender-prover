@@ -61,7 +61,74 @@ pub fn generate_verification_key(
     }
 }
 
-pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> ProgramProof {
+fn merge_multiple_fris(
+    snark_proof_input: SnarkProofInputs,
+    verifier_binary: &Vec<u32>,
+    #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,
+) -> ProgramProof {
+    tracing::info!("Merging all FRIs in one go");
+
+    let proofs_count = snark_proof_input.fri_proofs.len();
+
+    let mut proofs_oracles = vec![];
+    for proof in snark_proof_input.fri_proofs {
+        let (metadata, proof_list) = proof.to_metadata_and_proof_list();
+        let oracle = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
+        proofs_oracles.push((metadata, proof_list, oracle));
+    }
+
+    let mut merged_input = vec![
+        VerifierCircuitsIdentifiers::CombinedMultipleRecursionLayers as u32,
+        proofs_count as u32,
+    ];
+
+    for (_, _, oracle) in proofs_oracles.iter() {
+        merged_input.extend(oracle);
+    }
+
+    let (mut current_proof_list, mut proof_metadata) = create_proofs_internal(
+        verifier_binary,
+        merged_input,
+        &Machine::Reduced,
+        100, // Guessing - FIXME!!
+        Some(proofs_oracles[0].0.create_prev_metadata()),
+        #[cfg(feature = "gpu")]
+        &mut Some(gpu_state),
+        #[cfg(not(feature = "gpu"))]
+        &mut None,
+        &mut Some(0f64),
+    );
+
+    // Let's do recursion.
+    let mut recursion_level = 0;
+
+    while current_proof_list.reduced_proofs.len() > 2 {
+        tracing::info!("Recursion step {} after fri merging", recursion_level);
+        recursion_level += 1;
+        let non_determinism_data =
+            generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
+
+        (current_proof_list, proof_metadata) = create_proofs_internal(
+            verifier_binary,
+            non_determinism_data,
+            &Machine::Reduced,
+            proof_metadata.total_proofs(),
+            Some(proof_metadata.create_prev_metadata()),
+            &mut Some(gpu_state),
+            &mut Some(0f64),
+        );
+    }
+
+    let proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
+    tracing::info!(
+        "Finished linking all proofs from {} to {}",
+        snark_proof_input.from_block_number,
+        snark_proof_input.to_block_number
+    );
+    proof
+}
+
+pub fn merge_fris(snark_proof_input: SnarkProofInputs, multiple_fris: bool) -> ProgramProof {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
@@ -82,6 +149,21 @@ pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> ProgramProof {
     tracing::info!("Starting proof merging");
 
     let started_at = Instant::now();
+
+    if multiple_fris {
+        let proof = merge_multiple_fris(
+            snark_proof_input,
+            &verifier_binary,
+            #[cfg(feature = "gpu")]
+            &mut gpu_state,
+        );
+        SNARK_PROVER_METRICS
+            .time_taken_merge_fri
+            .observe(started_at.elapsed().as_secs_f64());
+        return proof;
+    }
+
+    tracing::info!("Merging FRIs 1 by 1");
 
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
@@ -174,6 +256,7 @@ pub async fn run_linking_fri_snark(
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
+    multiple_fris: bool,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
     let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
@@ -204,6 +287,7 @@ pub async fn run_linking_fri_snark(
             trusted_setup_file.clone(),
             #[cfg(feature = "gpu")]
             precomputations.clone(),
+            multiple_fris,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -227,6 +311,7 @@ pub async fn run_inner<P: ProofClient>(
         PlonkSnarkVerifierCircuitDeviceSetupWrapper,
         SnarkWrapperVK,
     ),
+    multiple_fris: bool,
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
     tracing::info!("Started picking job");
@@ -259,7 +344,7 @@ pub async fn run_inner<P: ProofClient>(
         end_block
     );
 
-    let proof = merge_fris(snark_proof_input);
+    let proof = merge_fris(snark_proof_input, multiple_fris);
 
     tracing::info!("Creating final proof before SNARKification");
 

@@ -99,7 +99,7 @@ impl MergeFrisOptions {
                 output_path,
             } => {
                 let snark_input = deserialize_from_file(input_path)?;
-                let merged_proof = merge_fris(snark_input);
+                let merged_proof = merge_fris(snark_input, true);
                 serialize_to_file(&merged_proof, output_path)?;
                 // Add your logic to read and merge proofs from the local file here.
             }
