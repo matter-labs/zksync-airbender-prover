@@ -9,6 +9,9 @@ use zkos_wrapper::{
     gpu::{compression::get_compression_setup, snark::gpu_create_snark_setup_data},
     BoojumWorker, CompressionVK, SnarkWrapperVK,
 };
+#[cfg(feature = "gpu")]
+use zksync_airbender_cli::prover_utils::MainCircuitType;
+
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
@@ -58,22 +61,109 @@ pub fn generate_verification_key(
     }
 }
 
-pub fn merge_fris(
+fn merge_multiple_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,
-    gpu_state: &mut GpuSharedState,
+    #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,
 ) -> ProgramProof {
+    tracing::info!("Merging all FRIs in one go");
+
+    let proofs_count = snark_proof_input.fri_proofs.len();
+
+    let mut proofs_oracles = vec![];
+    for proof in snark_proof_input.fri_proofs {
+        let (metadata, proof_list) = proof.to_metadata_and_proof_list();
+        let oracle = generate_oracle_data_from_metadata_and_proof_list(&metadata, &proof_list);
+        proofs_oracles.push((metadata, proof_list, oracle));
+    }
+
+    let mut merged_input = vec![
+        VerifierCircuitsIdentifiers::CombinedMultipleRecursionLayers as u32,
+        proofs_count as u32,
+    ];
+
+    for (_, _, oracle) in proofs_oracles.iter() {
+        merged_input.extend(oracle);
+    }
+
+    let (mut current_proof_list, mut proof_metadata) = create_proofs_internal(
+        verifier_binary,
+        merged_input,
+        &Machine::Reduced,
+        100, // Guessing - FIXME!!
+        Some(proofs_oracles[0].0.create_prev_metadata()),
+        #[cfg(feature = "gpu")]
+        &mut Some(gpu_state),
+        #[cfg(not(feature = "gpu"))]
+        &mut None,
+        &mut Some(0f64),
+    );
+
+    // Let's do recursion.
+    let mut recursion_level = 0;
+
+    while current_proof_list.reduced_proofs.len() > 2 {
+        tracing::info!("Recursion step {} after fri merging", recursion_level);
+        recursion_level += 1;
+        let non_determinism_data =
+            generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
+
+        (current_proof_list, proof_metadata) = create_proofs_internal(
+            verifier_binary,
+            non_determinism_data,
+            &Machine::Reduced,
+            proof_metadata.total_proofs(),
+            Some(proof_metadata.create_prev_metadata()),
+            &mut Some(gpu_state),
+            &mut Some(0f64),
+        );
+    }
+
+    let proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
+    tracing::info!(
+        "Finished linking all proofs from {} to {}",
+        snark_proof_input.from_block_number,
+        snark_proof_input.to_block_number
+    );
+    proof
+}
+
+pub fn merge_fris(snark_proof_input: SnarkProofInputs, multiple_fris: bool) -> ProgramProof {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
-
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
         return snark_proof_input.fri_proofs[0].clone();
     }
+
+    let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+
+    tracing::info!("Initializing GPU state");
+    #[cfg(feature = "gpu")]
+    let mut gpu_state = GpuSharedState::new(&verifier_binary, MainCircuitType::ReducedRiscVMachine);
+    #[cfg(not(feature = "gpu"))]
+    let mut gpu_state = GpuSharedState::new(&verifier_binary);
+    tracing::info!("Finished initializing GPU state");
+
     tracing::info!("Starting proof merging");
 
     let started_at = Instant::now();
+
+    if multiple_fris {
+        let proof = merge_multiple_fris(
+            snark_proof_input,
+            &verifier_binary,
+            #[cfg(feature = "gpu")]
+            &mut gpu_state,
+        );
+        SNARK_PROVER_METRICS
+            .time_taken_merge_fri
+            .observe(started_at.elapsed().as_secs_f64());
+        return proof;
+    }
+
+    tracing::info!("Merging FRIs 1 by 1");
 
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
@@ -99,12 +189,12 @@ pub fn merge_fris(
         merged_input.extend(second_oracle);
 
         let (mut current_proof_list, mut proof_metadata) = create_proofs_internal(
-            verifier_binary,
+            &verifier_binary,
             merged_input,
             &zksync_airbender_execution_utils::Machine::Reduced,
-            100, // Guessing - FIXME!!
+            10000, // Guessing - FIXME!!
             Some(first_metadata.create_prev_metadata()),
-            &mut Some(gpu_state),
+            &mut Some(&mut gpu_state),
             &mut Some(0f64),
         );
         // Let's do recursion.
@@ -117,12 +207,12 @@ pub fn merge_fris(
                 generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
 
             (current_proof_list, proof_metadata) = create_proofs_internal(
-                verifier_binary,
+                &verifier_binary,
                 non_determinism_data,
                 &Machine::Reduced,
                 proof_metadata.total_proofs(),
                 Some(proof_metadata.create_prev_metadata()),
-                &mut Some(gpu_state),
+                &mut Some(&mut gpu_state),
                 &mut Some(0f64),
             );
         }
@@ -166,6 +256,7 @@ pub async fn run_linking_fri_snark(
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
+    multiple_fris: bool,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
     let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
@@ -173,7 +264,6 @@ pub async fn run_linking_fri_snark(
     let startup_started_at = Instant::now();
 
     tracing::info!("Starting zksync_os_snark_prover");
-    let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     #[cfg(feature = "gpu")]
     let precomputations = {
@@ -193,11 +283,11 @@ pub async fn run_linking_fri_snark(
     loop {
         let proof_generated = run_inner(
             &sequencer_client,
-            &verifier_binary,
             output_dir.clone(),
             trusted_setup_file.clone(),
             #[cfg(feature = "gpu")]
             precomputations.clone(),
+            multiple_fris,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -215,13 +305,13 @@ pub async fn run_linking_fri_snark(
 
 pub async fn run_inner<P: ProofClient>(
     client: &P,
-    verifier_binary: &Vec<u32>,
     output_dir: String,
     trusted_setup_file: String,
     #[cfg(feature = "gpu")] precomputations: (
         PlonkSnarkVerifierCircuitDeviceSetupWrapper,
         SnarkWrapperVK,
     ),
+    multiple_fris: bool,
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
     tracing::info!("Started picking job");
@@ -253,54 +343,33 @@ pub async fn run_inner<P: ProofClient>(
         start_block,
         end_block
     );
-    tracing::info!("Initializing GPU state");
-    #[cfg(feature = "gpu")]
-    let mut gpu_state = GpuSharedState::new(
-        verifier_binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-    );
-    #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = GpuSharedState::new(verifier_binary);
-    tracing::info!("Finished initializing GPU state");
-    let proof = merge_fris(snark_proof_input, verifier_binary, &mut gpu_state);
 
-    // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
-    #[cfg(feature = "gpu")]
-    drop(gpu_state);
+    let proof = merge_fris(snark_proof_input, multiple_fris);
 
     tracing::info!("Creating final proof before SNARKification");
 
     let final_proof_started_at = Instant::now();
-    let final_proof = create_final_proofs_from_program_proof(
-        proof,
-        RecursionStrategy::UseReducedLog23Machine,
-        // TODO: currently enabled GPU on final proofs, but we should have a switch in the main program
-        // that allow people to run in 3 modes:
-        // - cpu only
-        // - small gpu (then this is false)
-        // - gpu (a.k.a large gpu) - then this is true.
-        // NOTE: use this as false, if you want to run on a small GPU
-        true,
-    );
+    let final_proof = generate_final_proof(proof);
     SNARK_PROVER_METRICS
         .time_taken_final_proof
         .observe(final_proof_started_at.elapsed().as_secs_f64());
 
     tracing::info!("Finished creating final proof");
-    let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
+    let final_proof_path = Path::new(&output_dir).join("one_fri.tmp");
 
-    serialize_to_file(&final_proof, &one_fri_path);
+    serialize_to_file(&final_proof, &final_proof_path);
 
     tracing::info!("SNARKifying proof");
     let snark_time = Instant::now();
-    match prove(
-        one_fri_path.into_os_string().into_string().unwrap(),
+    let args = WrapFinalProofArgs::new(
+        final_proof_path.as_os_str().to_str().unwrap().to_owned(),
         output_dir.clone(),
         Some(trusted_setup_file.clone()),
-        false,
-        #[cfg(feature = "gpu")]
-        Some(precomputations.clone()),
-    ) {
+    );
+    #[cfg(feature = "gpu")]
+    let args = args.with_precomputations(precomputations.clone());
+
+    match wrap_final_proof(args) {
         Ok(()) => {
             tracing::info!(
                 "SNARKification took {:?}, with total proving time being {:?}",
@@ -346,6 +415,64 @@ pub async fn run_inner<P: ProofClient>(
     };
 
     Ok(true)
+}
+
+pub struct WrapFinalProofArgs {
+    final_proof_path: String,
+    output_dir: String,
+    trusted_setup_file: Option<String>,
+    #[cfg(feature = "gpu")]
+    precomputations: Option<(PlonkSnarkVerifierCircuitDeviceSetupWrapper, SnarkWrapperVK)>,
+}
+
+impl WrapFinalProofArgs {
+    pub fn new(
+        final_proof_path: String,
+        output_dir: String,
+        trusted_setup_file: Option<String>,
+    ) -> Self {
+        Self {
+            final_proof_path,
+            output_dir,
+            trusted_setup_file,
+            #[cfg(feature = "gpu")]
+            precomputations: None,
+        }
+    }
+    #[cfg(feature = "gpu")]
+    pub fn with_precomputations(
+        mut self,
+        precomputations: (PlonkSnarkVerifierCircuitDeviceSetupWrapper, SnarkWrapperVK),
+    ) -> Self {
+        #[cfg(feature = "gpu")]
+        {
+            self.precomputations = Some(precomputations);
+        }
+        self
+    }
+}
+
+pub fn wrap_final_proof(args: WrapFinalProofArgs) -> anyhow::Result<()> {
+    prove(
+        args.final_proof_path,
+        args.output_dir,
+        args.trusted_setup_file,
+        false,
+        #[cfg(feature = "gpu")]
+        args.precomputations,
+    )
+    .map_err(|e| anyhow::anyhow!(e.to_string()))
+}
+
+pub fn generate_final_proof(proof: ProgramProof) -> ProgramProof {
+    create_final_proofs_from_program_proof(
+        proof,
+        RecursionStrategy::UseReducedLog23Machine,
+        #[cfg(feature = "gpu")]
+        true,
+        #[cfg(not(feature = "gpu"))]
+        false,
+    )
 }
 
 pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {

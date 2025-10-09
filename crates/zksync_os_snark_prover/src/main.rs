@@ -51,6 +51,11 @@ enum Commands {
         /// Port to run the Prometheus metrics server on
         #[arg(long, default_value = "3124")]
         prometheus_port: u16,
+        /// Intermediary flag that determines if FRIs should be merged 2 at a time or multiple in one go.
+        // This will be by default false until the transition is made.
+        // The flag will be deleted altogether, once the transition is complete.
+        #[arg(long, default_value_t = false)]
+        multiple_fris: bool,
     },
 }
 
@@ -84,6 +89,7 @@ fn main() {
             // mode,
             iterations,
             prometheus_port,
+            multiple_fris,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -109,6 +115,7 @@ fn main() {
                         output_dir,
                         trusted_setup_file,
                         iterations,
+                        multiple_fris,
                     ) => {
                         tracing::info!("SNARK prover finished");
                         result.expect("SNARK prover finished with error");
