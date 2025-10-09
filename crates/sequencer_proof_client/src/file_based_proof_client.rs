@@ -31,8 +31,16 @@ impl Default for FileBasedProofClient {
 
 impl FileBasedProofClient {
     pub fn new(base_dir: String) -> Self {
+        let base_dir_path = PathBuf::from(base_dir);
+        
+        // Create the directory if it doesn't exist
+        if !base_dir_path.exists() {
+            std::fs::create_dir_all(&base_dir_path)
+                .expect("Failed to create base directory");
+        }
+        
         Self {
-            base_dir: PathBuf::from(base_dir),
+            base_dir: base_dir_path,
         }
     }
 
@@ -50,9 +58,10 @@ impl FileBasedProofClient {
         block_number: u32,
         prover_input: Vec<u8>,
     ) -> anyhow::Result<()> {
-        let path = self.base_dir.join(FRI_JOB_FILE);
+        let filename = format!("fri_job_{}.json", block_number);
+        let path = self.base_dir.join(&filename);
         let mut file =
-            std::fs::File::create(path).context(format!("Failed to create {FRI_JOB_FILE}"))?;
+            std::fs::File::create(path).context(format!("Failed to create {}", filename))?;
         serde_json::to_writer_pretty(
             &mut file,
             &NextFriProverJobPayload {
@@ -60,7 +69,7 @@ impl FileBasedProofClient {
                 prover_input: STANDARD.encode(&prover_input),
             },
         )
-        .context(format!("Failed to write {FRI_JOB_FILE}"))?;
+        .context(format!("Failed to write {}", filename))?;
         Ok(())
     }
 
@@ -93,6 +102,10 @@ impl FileBasedProofClient {
 
 #[async_trait]
 impl ProofClient for FileBasedProofClient {
+    async fn peek_fri_job(&self, _block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+        unimplemented!()
+    }
+
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let path = self.base_dir.join(FRI_JOB_FILE);
         let file = std::fs::File::open(path).context(format!("Failed to open {FRI_JOB_FILE}"))?;
@@ -115,6 +128,14 @@ impl ProofClient for FileBasedProofClient {
         serde_json::to_writer_pretty(&mut file, &payload)
             .context(format!("Failed to write {FRI_PROOF_FILE}"))?;
         Ok(())
+    }
+
+    async fn peek_fri_proofs(
+        &self,
+        _from_block_number: u32,
+        _to_block_number: u32,
+    ) -> anyhow::Result<Option<SnarkProofInputs>> {
+        unimplemented!()
     }
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
