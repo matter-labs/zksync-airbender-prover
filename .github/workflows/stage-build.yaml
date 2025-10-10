@@ -1,4 +1,4 @@
-name: Stage build
+name: Docker build and release
 
 on:
   # Manual trigger with a tag name input
@@ -11,6 +11,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - v**
 
 # Cancel only jobs in PRs
 concurrency:
