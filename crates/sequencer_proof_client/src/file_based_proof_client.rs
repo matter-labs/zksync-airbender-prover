@@ -6,8 +6,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use zkos_wrapper::SnarkWrapperProof;
 
 use crate::{
-    GetSnarkProofPayload, L2BlockNumber, NextFriProverJobPayload, ProofClient, SnarkProofInputs,
-    SubmitFriProofPayload, SubmitSnarkProofPayload,
+    FailedFriProofPayload, GetSnarkProofPayload, L2BlockNumber, NextFriProverJobPayload,
+    ProofClient, SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 
 const FRI_JOB_FILE: &str = "fri_job.json";
@@ -84,6 +84,25 @@ impl FileBasedProofClient {
                 Ok(())
             })
             .collect::<Result<(), anyhow::Error>>()?;
+        Ok(())
+    }
+
+    pub fn serialize_failed_fri_proof(
+        &self,
+        failed_fri_proof: &FailedFriProofPayload,
+    ) -> anyhow::Result<()> {
+        let filename = format!(
+            "failed_fri_proof_{}.json",
+            failed_fri_proof
+                .block_metadata
+                .commit_batch_info
+                .batch_number
+        );
+        let path = self.base_dir.join(filename.clone());
+        let mut file =
+            std::fs::File::create(path).context(format!("Failed to create {filename}"))?;
+        serde_json::to_writer_pretty(&mut file, &failed_fri_proof)
+            .context(format!("Failed to write {filename}"))?;
         Ok(())
     }
 }
@@ -176,6 +195,18 @@ impl ProofClient for FileBasedProofClient {
         };
         Ok(Some(snark_proof_inputs.try_into()?))
     }
+
+    async fn peek_failed_fri_proof(
+        &self,
+        block_number: u32,
+    ) -> anyhow::Result<Option<FailedFriProofPayload>> {
+        let filename = format!("failed_fri_proof_{block_number}.json");
+        let path = self.base_dir.join(filename.clone());
+        let file = std::fs::File::open(path).context(format!("Failed to open {filename}"))?;
+        let failed_fri_proof: FailedFriProofPayload =
+            serde_json::from_reader(file).context(format!("Failed to parse {filename}"))?;
+        Ok(Some(failed_fri_proof))
+    }
 }
 
 #[cfg(test)]
@@ -235,6 +266,40 @@ mod tests {
         assert_eq!(
             snark_proof_inputs.fri_proofs.len(),
             snark_proof_inputs_from_sequencer.fri_proofs.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_file_based_proof_client_peek_failed_fri_proof() {
+        let block_number = 598;
+        let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
+        let file_based_proof_client = FileBasedProofClient::new("../../outputs/".to_string());
+        let failed_fri_proof_from_sequencer = sequencer_proof_client
+            .peek_failed_fri_proof(block_number)
+            .await
+            .unwrap()
+            .unwrap();
+        file_based_proof_client
+            .serialize_failed_fri_proof(&failed_fri_proof_from_sequencer)
+            .unwrap();
+        let failed_fri_proof = file_based_proof_client
+            .peek_failed_fri_proof(block_number)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            failed_fri_proof
+                .block_metadata
+                .commit_batch_info
+                .batch_number,
+            failed_fri_proof_from_sequencer
+                .block_metadata
+                .commit_batch_info
+                .batch_number
+        );
+        assert_eq!(
+            failed_fri_proof.proof,
+            failed_fri_proof_from_sequencer.proof
         );
     }
 }

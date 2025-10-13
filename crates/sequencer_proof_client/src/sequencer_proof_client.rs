@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use crate::metrics::Method;
 use crate::{
-    GetSnarkProofPayload, NextFriProverJobPayload, ProofClient, SnarkProofInputs,
-    SubmitFriProofPayload, SubmitSnarkProofPayload,
+    FailedFriProofPayload, GetSnarkProofPayload, NextFriProverJobPayload, ProofClient,
+    SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 use crate::{L2BlockNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
@@ -201,6 +201,24 @@ impl ProofClient for SequencerProofClient {
             }
             StatusCode::NO_CONTENT => Ok(None),
             _ => Err(anyhow!("Unexpected status {resp:?} when peeking FRI proofs from {from_block_number} to {to_block_number}")),
+        }
+    }
+
+    async fn peek_failed_fri_proof(
+        &self,
+        block_number: u32,
+    ) -> anyhow::Result<Option<FailedFriProofPayload>> {
+        let url = format!("{}/prover-jobs/FRI/{block_number}/failed", self.url);
+        let resp = self.client.get(&url).send().await?;
+        match resp.status() {
+            StatusCode::OK => {
+                let body: FailedFriProofPayload = resp.json().await?;
+                Ok(Some(body))
+            }
+            StatusCode::NO_CONTENT => Ok(None),
+            _ => Err(anyhow!(
+                "Unexpected status {resp:?} when peeking failed FRI proof for block {block_number}"
+            )),
         }
     }
 }
