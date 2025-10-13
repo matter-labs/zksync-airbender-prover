@@ -341,7 +341,7 @@ pub async fn run_inner<P: ProofClient>(
                 .set(end_block.0 as i64);
         }
         Err(e) => {
-            tracing::error!("Failed to submit SNARK job due to {e:?}, skipping");
+            tracing::error!("Failed to submit SNARK job, blocks {} to {} due to {e:?}, skipping", start_block, end_block);
         }
     };
 
