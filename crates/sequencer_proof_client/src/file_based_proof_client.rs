@@ -24,7 +24,7 @@ pub struct FileBasedProofClient {
 impl Default for FileBasedProofClient {
     fn default() -> Self {
         Self {
-            base_dir: PathBuf::from("../../test_data/"),
+            base_dir: PathBuf::from("../../outputs/"),
         }
     }
 }
@@ -45,14 +45,11 @@ impl FileBasedProofClient {
         Ok(String::new())
     }
 
-    pub fn serialize_fri_job(
-        &self,
-        block_number: u32,
-        prover_input: Vec<u8>,
-    ) -> anyhow::Result<()> {
-        let path = self.base_dir.join(FRI_JOB_FILE);
+    pub fn serialize_fri_job(&self, block_number: u32, prover_input: &[u8]) -> anyhow::Result<()> {
+        let filename = format!("fri_job_{block_number}.json");
+        let path = self.base_dir.join(filename.clone());
         let mut file =
-            std::fs::File::create(path).context(format!("Failed to create {FRI_JOB_FILE}"))?;
+            std::fs::File::create(path).context(format!("Failed to create {filename}"))?;
         serde_json::to_writer_pretty(
             &mut file,
             &NextFriProverJobPayload {
@@ -60,33 +57,33 @@ impl FileBasedProofClient {
                 prover_input: STANDARD.encode(&prover_input),
             },
         )
-        .context(format!("Failed to write {FRI_JOB_FILE}"))?;
+        .context(format!("Failed to write {filename}"))?;
         Ok(())
     }
 
-    pub fn serialize_snark_job(&self, snark_proof_inputs: SnarkProofInputs) -> anyhow::Result<()> {
-        let path = self.base_dir.join(SNARK_JOB_FILE);
-        let mut file =
-            std::fs::File::create(path).context(format!("Failed to create {SNARK_JOB_FILE}"))?;
-        let fri_proofs = snark_proof_inputs
+    pub fn serialize_fri_proofs(
+        &self,
+        snark_proof_inputs: &SnarkProofInputs,
+    ) -> anyhow::Result<()> {
+        let mut block_number = snark_proof_inputs.from_block_number.0;
+        snark_proof_inputs
             .fri_proofs
             .iter()
             .map(|proof| {
                 let proof_bytes: Vec<u8> =
                     bincode::serde::encode_to_vec(proof, bincode::config::standard())
                         .expect("failed to bincode-serialize proof");
-                STANDARD.encode(&proof_bytes)
+                let proof = STANDARD.encode(&proof_bytes);
+                let filename = format!("fri_proof_{block_number}.json");
+                let path = self.base_dir.join(filename.clone());
+                let mut file =
+                    std::fs::File::create(path).context(format!("Failed to create {filename}"))?;
+                serde_json::to_writer_pretty(&mut file, &proof)
+                    .context(format!("Failed to write {filename}"))?;
+                block_number += 1;
+                Ok(())
             })
-            .collect::<Vec<String>>();
-        serde_json::to_writer_pretty(
-            &mut file,
-            &GetSnarkProofPayload {
-                block_number_from: snark_proof_inputs.from_block_number.0 as u64,
-                block_number_to: snark_proof_inputs.to_block_number.0 as u64,
-                fri_proofs,
-            },
-        )
-        .context(format!("Failed to write {SNARK_JOB_FILE}"))?;
+            .collect::<Result<(), anyhow::Error>>()?;
         Ok(())
     }
 }
@@ -142,5 +139,102 @@ impl ProofClient for FileBasedProofClient {
         serde_json::to_writer_pretty(&mut file, &payload)
             .context(format!("Failed to write {SNARK_PROOF_FILE}"))?;
         Ok(())
+    }
+
+    async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+        let filename = format!("fri_job_{block_number}.json");
+        let path = self.base_dir.join(filename.clone());
+        let file = std::fs::File::open(path).context(format!("Failed to open {filename}"))?;
+        let fri_job: NextFriProverJobPayload =
+            serde_json::from_reader(file).context(format!("Failed to parse {filename}"))?;
+        let data = STANDARD
+            .decode(&fri_job.prover_input)
+            .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
+        Ok(Some((fri_job.block_number, data)))
+    }
+
+    async fn peek_fri_proofs(
+        &self,
+        from_block_number: u32,
+        to_block_number: u32,
+    ) -> anyhow::Result<Option<SnarkProofInputs>> {
+        let mut block_number = from_block_number;
+        let mut fri_proofs = vec![];
+        while block_number <= to_block_number {
+            let filename = format!("fri_proof_{block_number}.json");
+            let path = self.base_dir.join(filename.clone());
+            let file = std::fs::File::open(path).context(format!("Failed to open {filename}"))?;
+            let fri_proof: String =
+                serde_json::from_reader(file).context(format!("Failed to parse {filename}"))?;
+            fri_proofs.push(fri_proof);
+            block_number += 1;
+        }
+        let snark_proof_inputs = GetSnarkProofPayload {
+            block_number_from: from_block_number as u64,
+            block_number_to: to_block_number as u64,
+            fri_proofs,
+        };
+        Ok(Some(snark_proof_inputs.try_into()?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sequencer_proof_client::SequencerProofClient;
+
+    #[tokio::test]
+    async fn test_file_based_proof_client_peek_fri_job() {
+        let block_number = 598;
+        let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
+        let file_based_proof_client = FileBasedProofClient::new("../../outputs/".to_string());
+        let (block_number, data_from_sequencer) = sequencer_proof_client
+            .peek_fri_job(block_number)
+            .await
+            .unwrap()
+            .unwrap();
+        file_based_proof_client
+            .serialize_fri_job(block_number, &data_from_sequencer)
+            .unwrap();
+        let (block_number, data) = file_based_proof_client
+            .peek_fri_job(block_number)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(block_number, block_number);
+        assert_eq!(data, data_from_sequencer);
+    }
+
+    #[tokio::test]
+    async fn test_file_based_proof_client_peek_fri_proofs() {
+        let from_block_number = 580;
+        let to_block_number = 582;
+        let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
+        let file_based_proof_client = FileBasedProofClient::new("../../outputs/".to_string());
+        let snark_proof_inputs_from_sequencer = sequencer_proof_client
+            .peek_fri_proofs(from_block_number, to_block_number)
+            .await
+            .unwrap()
+            .unwrap();
+        file_based_proof_client
+            .serialize_fri_proofs(&snark_proof_inputs_from_sequencer)
+            .unwrap();
+        let snark_proof_inputs = file_based_proof_client
+            .peek_fri_proofs(from_block_number, to_block_number)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            snark_proof_inputs.from_block_number,
+            snark_proof_inputs_from_sequencer.from_block_number
+        );
+        assert_eq!(
+            snark_proof_inputs.to_block_number,
+            snark_proof_inputs_from_sequencer.to_block_number
+        );
+        assert_eq!(
+            snark_proof_inputs.fri_proofs.len(),
+            snark_proof_inputs_from_sequencer.fri_proofs.len()
+        );
     }
 }

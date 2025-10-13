@@ -94,4 +94,10 @@ pub trait ProofClient {
         to_block_number: L2BlockNumber,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()>;
+    async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
+    async fn peek_fri_proofs(
+        &self,
+        from_block_number: u32,
+        to_block_number: u32,
+    ) -> anyhow::Result<Option<SnarkProofInputs>>;
 }
