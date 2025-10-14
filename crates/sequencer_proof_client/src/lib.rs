@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
-use zksync_os_l1_sender::batcher_model::BatchMetadata;
 
 mod metrics;
 
@@ -49,7 +48,10 @@ struct SubmitSnarkProofPayload {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FailedFriProofPayload {
-    block_metadata: BatchMetadata,
+    batch_number: u64,
+    last_block_timestamp: u64,
+    expected_hash_u32s: [u32; 8],
+    proof_final_register_values: [u32; 16],
     proof: String, // base64‑encoded FRI proof
 }
 

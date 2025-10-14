@@ -91,13 +91,7 @@ impl FileBasedProofClient {
         &self,
         failed_fri_proof: &FailedFriProofPayload,
     ) -> anyhow::Result<()> {
-        let filename = format!(
-            "failed_fri_proof_{}.json",
-            failed_fri_proof
-                .block_metadata
-                .commit_batch_info
-                .batch_number
-        );
+        let filename = format!("failed_fri_proof_{}.json", failed_fri_proof.batch_number);
         let path = self.base_dir.join(filename.clone());
         let mut file =
             std::fs::File::create(path).context(format!("Failed to create {filename}"))?;
@@ -288,14 +282,8 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(
-            failed_fri_proof
-                .block_metadata
-                .commit_batch_info
-                .batch_number,
-            failed_fri_proof_from_sequencer
-                .block_metadata
-                .commit_batch_info
-                .batch_number
+            failed_fri_proof.batch_number,
+            failed_fri_proof_from_sequencer.batch_number
         );
         assert_eq!(
             failed_fri_proof.proof,
