@@ -54,7 +54,7 @@ impl FileBasedProofClient {
             &mut file,
             &NextFriProverJobPayload {
                 block_number,
-                prover_input: STANDARD.encode(&prover_input),
+                prover_input: STANDARD.encode(prover_input),
             },
         )
         .context(format!("Failed to write {filename}"))?;
@@ -69,7 +69,7 @@ impl FileBasedProofClient {
         snark_proof_inputs
             .fri_proofs
             .iter()
-            .map(|proof| {
+            .try_for_each(|proof| -> anyhow::Result<()> {
                 let proof_bytes: Vec<u8> =
                     bincode::serde::encode_to_vec(proof, bincode::config::standard())
                         .expect("failed to bincode-serialize proof");
@@ -82,8 +82,7 @@ impl FileBasedProofClient {
                     .context(format!("Failed to write {filename}"))?;
                 block_number += 1;
                 Ok(())
-            })
-            .collect::<Result<(), anyhow::Error>>()?;
+            })?;
         Ok(())
     }
 
