@@ -208,6 +208,7 @@ mod tests {
     use crate::sequencer_proof_client::SequencerProofClient;
 
     #[tokio::test]
+    #[ignore]
     async fn test_file_based_proof_client_peek_fri_job() {
         let block_number = 598;
         let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
@@ -230,6 +231,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_file_based_proof_client_peek_fri_proofs() {
         let from_block_number = 580;
         let to_block_number = 582;
@@ -263,6 +265,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_file_based_proof_client_peek_failed_fri_proof() {
         let block_number = 598;
         let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
