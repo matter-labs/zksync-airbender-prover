@@ -2,39 +2,36 @@ name: Rust CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   pull_request:
-    branches: [ "main" ]
 
-env:
-  CARGO_TERM_COLOR: always
+# Cancel new runs for PRs only
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Add default permissions for the workflow
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 
 jobs:
-  general-checks:
+
+  ############################
+  #     General checks       #
+  ############################
+  check:
     runs-on: matterlabs-ci-runner-high-performance
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          submodule: "recursive"
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup runner
+        uses: ./.github/actions/runner-setup
         with:
-          toolchain: nightly-2025-05-20
-          components: clippy, rustfmt
-
-      - name: Setup cache dependencies
-        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -45,8 +42,30 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --no-default-features -- -D warnings
 
-      - name: Build
-        run: cargo build --verbose --release --no-default-features
+      - name: Build server
+        run: cargo build --release --no-default-features
 
       - name: Run tests
-        run: cargo test --verbose --no-default-features
+        run: cargo test --no-default-features
+
+
+  ###############################
+  #  Mandatory CI status check  #
+  ###############################
+  ci-success:
+    name: Github Status Check
+    runs-on: ubuntu-latest
+    if: always() && !cancelled()
+    needs:
+      [
+        check,
+      ]
+    steps:
+      - name: Status
+        run: |
+          # This will check all jobs status in the `needs` list, and fail job if one is failed.
+          # Since we split prover and core to different flows, this job will be only as Required Status Check in the Pull Request.
+          if [[ ${{ contains(join(needs.*.result, ','), 'failure') }} == "true" ]]; then
+            echo "Intentionally failing to block PR from merging"
+            exit 1
+          fi
