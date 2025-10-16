@@ -4926,6 +4926,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "zksync-airbender-prover-cli"
+version = "0.4.7"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bincode 2.0.1",
+ "clap",
+ "cli",
+ "execution_utils",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zksync_os_fri_prover",
+ "zksync_sequencer_proof_client",
+]
+
+[[package]]
 name = "zksync-gpu-ffi"
 version = "0.154.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
