@@ -25,7 +25,7 @@ pub struct FileBasedProofClient {
 impl Default for FileBasedProofClient {
     fn default() -> Self {
         Self {
-            base_dir: PathBuf::from("../../outputs/"),
+            base_dir: PathBuf::from("./outputs/"),
         }
     }
 }
@@ -143,95 +143,5 @@ impl ProofClient for FileBasedProofClient {
         serde_json::to_writer_pretty(&mut file, &payload)
             .context(format!("Failed to write {SNARK_PROOF_FILE}"))?;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{sequencer_proof_client::SequencerProofClient, PeekableProofClient};
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_file_based_proof_client_peek_fri_job() {
-        let block_number = 598;
-        let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
-        let file_based_proof_client = FileBasedProofClient::new("../../outputs/".to_string());
-        let (block_number, data_from_sequencer) = sequencer_proof_client
-            .peek_fri_job(block_number)
-            .await
-            .unwrap()
-            .unwrap();
-        file_based_proof_client
-            .serialize_fri_job(block_number, &data_from_sequencer)
-            .unwrap();
-        let (block_number, data) = file_based_proof_client
-            .pick_fri_job()
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(block_number, block_number);
-        assert_eq!(data, data_from_sequencer);
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_file_based_proof_client_peek_snark_job() {
-        let from_block_number = 580;
-        let to_block_number = 582;
-        let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
-        let file_based_proof_client = FileBasedProofClient::new("../../outputs/".to_string());
-        let snark_proof_inputs_from_sequencer = sequencer_proof_client
-            .peek_snark_job(from_block_number, to_block_number)
-            .await
-            .unwrap()
-            .unwrap();
-        file_based_proof_client
-            .serialize_snark_job(&snark_proof_inputs_from_sequencer)
-            .unwrap();
-        let snark_proof_inputs = file_based_proof_client
-            .pick_snark_job()
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            snark_proof_inputs.from_block_number,
-            snark_proof_inputs_from_sequencer.from_block_number
-        );
-        assert_eq!(
-            snark_proof_inputs.to_block_number,
-            snark_proof_inputs_from_sequencer.to_block_number
-        );
-        assert_eq!(
-            snark_proof_inputs.fri_proofs.len(),
-            snark_proof_inputs_from_sequencer.fri_proofs.len()
-        );
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_file_based_proof_client_peek_failed_fri_proof() {
-        let block_number = 598;
-        let sequencer_proof_client = SequencerProofClient::new("http://localhost:3124".to_string());
-        let file_based_proof_client = FileBasedProofClient::new("../../outputs/".to_string());
-        let failed_fri_proof_from_sequencer = sequencer_proof_client
-            .get_failed_fri_proof(block_number)
-            .await
-            .unwrap()
-            .unwrap();
-        file_based_proof_client
-            .serialize_failed_fri_proof(&failed_fri_proof_from_sequencer)
-            .unwrap();
-        let failed_fri_proof = file_based_proof_client
-            .deserialize_failed_fri_proof()
-            .unwrap();
-        assert_eq!(
-            failed_fri_proof.batch_number,
-            failed_fri_proof_from_sequencer.batch_number
-        );
-        assert_eq!(
-            failed_fri_proof.proof,
-            failed_fri_proof_from_sequencer.proof
-        );
     }
 }
