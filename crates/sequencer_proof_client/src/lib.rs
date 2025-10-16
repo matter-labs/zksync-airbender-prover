@@ -48,11 +48,11 @@ struct SubmitSnarkProofPayload {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FailedFriProofPayload {
-    batch_number: u64,
-    last_block_timestamp: u64,
-    expected_hash_u32s: [u32; 8],
-    proof_final_register_values: [u32; 16],
-    proof: String, // base64‑encoded FRI proof
+    pub batch_number: u64,
+    pub last_block_timestamp: u64,
+    pub expected_hash_u32s: [u32; 8],
+    pub proof_final_register_values: [u32; 16],
+    pub proof: String, // base64‑encoded FRI proof
 }
 
 impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
@@ -102,13 +102,17 @@ pub trait ProofClient {
         to_block_number: L2BlockNumber,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+pub trait PeekableProofClient {
     async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
-    async fn peek_fri_proofs(
+    async fn peek_snark_job(
         &self,
         from_block_number: u32,
         to_block_number: u32,
     ) -> anyhow::Result<Option<SnarkProofInputs>>;
-    async fn peek_failed_fri_proof(
+    async fn get_failed_fri_proof(
         &self,
         block_number: u32,
     ) -> anyhow::Result<Option<FailedFriProofPayload>>;
