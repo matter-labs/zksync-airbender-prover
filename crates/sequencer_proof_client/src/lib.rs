@@ -1,14 +1,13 @@
 pub mod file_based_proof_client;
 pub mod sequencer_proof_client;
 
+use crate::metrics::SEQUENCER_CLIENT_METRICS;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
-
-use crate::metrics::SEQUENCER_CLIENT_METRICS;
 
 mod metrics;
 
@@ -45,6 +44,15 @@ struct SubmitSnarkProofPayload {
     block_number_from: u64,
     block_number_to: u64,
     proof: String, // base64‑encoded SNARK proof
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FailedFriProofPayload {
+    pub batch_number: u64,
+    pub last_block_timestamp: u64,
+    pub expected_hash_u32s: [u32; 8],
+    pub proof_final_register_values: [u32; 16],
+    pub proof: String, // base64‑encoded FRI proof
 }
 
 impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
@@ -94,4 +102,18 @@ pub trait ProofClient {
         to_block_number: L2BlockNumber,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+pub trait PeekableProofClient {
+    async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
+    async fn peek_snark_job(
+        &self,
+        from_block_number: u32,
+        to_block_number: u32,
+    ) -> anyhow::Result<Option<SnarkProofInputs>>;
+    async fn get_failed_fri_proof(
+        &self,
+        block_number: u32,
+    ) -> anyhow::Result<Option<FailedFriProofPayload>>;
 }

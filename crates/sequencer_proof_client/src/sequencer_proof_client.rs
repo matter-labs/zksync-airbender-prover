@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use crate::metrics::Method;
 use crate::{
-    GetSnarkProofPayload, NextFriProverJobPayload, ProofClient, SnarkProofInputs,
-    SubmitFriProofPayload, SubmitSnarkProofPayload,
+    FailedFriProofPayload, GetSnarkProofPayload, NextFriProverJobPayload, PeekableProofClient,
+    ProofClient, SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 use crate::{L2BlockNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
@@ -159,5 +159,69 @@ impl ProofClient for SequencerProofClient {
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitSnark]
             .observe(started_at.elapsed().as_secs_f64());
         Ok(())
+    }
+}
+
+#[async_trait]
+impl PeekableProofClient for SequencerProofClient {
+    /// Note: you can peek only failed jobs as successful ones are removed.
+    async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+        let url = format!("{}/prover-jobs/FRI/{block_number}/peek", self.url);
+        let resp = self.client.get(&url).send().await?;
+        match resp.status() {
+            StatusCode::OK => {
+                let body: NextFriProverJobPayload = resp.json().await?;
+                let data = STANDARD
+                    .decode(&body.prover_input)
+                    .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
+                Ok(Some((body.block_number, data)))
+            }
+            StatusCode::NO_CONTENT => Ok(None),
+            _ => Err(anyhow!(
+                "Unexpected status {resp:?} when peeking the block {block_number}"
+            )),
+        }
+    }
+
+    async fn peek_snark_job(
+        &self,
+        from_block_number: u32,
+        to_block_number: u32,
+    ) -> anyhow::Result<Option<SnarkProofInputs>> {
+        let url = format!(
+            "{}/prover-jobs/SNARK/{from_block_number}/{to_block_number}/peek",
+            self.url
+        );
+        let resp = self.client.get(&url).send().await?;
+        match resp.status() {
+            StatusCode::OK => {
+                let get_snark_proof_payload = resp.json::<GetSnarkProofPayload>().await?;
+                Ok(Some(
+                    get_snark_proof_payload
+                        .try_into()
+                        .context("failed to parse SnarkProofPayload")?,
+                ))
+            }
+            StatusCode::NO_CONTENT => Ok(None),
+            _ => Err(anyhow!("Unexpected status {resp:?} when peeking FRI proofs from {from_block_number} to {to_block_number}")),
+        }
+    }
+
+    async fn get_failed_fri_proof(
+        &self,
+        block_number: u32,
+    ) -> anyhow::Result<Option<FailedFriProofPayload>> {
+        let url = format!("{}/prover-jobs/FRI/{block_number}/failed", self.url);
+        let resp = self.client.get(&url).send().await?;
+        match resp.status() {
+            StatusCode::OK => {
+                let body: FailedFriProofPayload = resp.json().await?;
+                Ok(Some(body))
+            }
+            StatusCode::NO_CONTENT => Ok(None),
+            _ => Err(anyhow!(
+                "Unexpected status {resp:?} when peeking failed FRI proof for block {block_number}"
+            )),
+        }
     }
 }

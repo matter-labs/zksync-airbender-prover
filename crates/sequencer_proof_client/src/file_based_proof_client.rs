@@ -6,14 +6,15 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use zkos_wrapper::SnarkWrapperProof;
 
 use crate::{
-    GetSnarkProofPayload, L2BlockNumber, NextFriProverJobPayload, ProofClient, SnarkProofInputs,
-    SubmitFriProofPayload, SubmitSnarkProofPayload,
+    FailedFriProofPayload, GetSnarkProofPayload, L2BlockNumber, NextFriProverJobPayload,
+    ProofClient, SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 
 const FRI_JOB_FILE: &str = "fri_job.json";
 const FRI_PROOF_FILE: &str = "fri_proof.json";
 const SNARK_JOB_FILE: &str = "snark_job.json";
 const SNARK_PROOF_FILE: &str = "snark_proof.json";
+const FAILED_FRI_PROOF_FILE: &str = "failed_fri_proof.json";
 
 // FileBasedProofClient stores proof jobs and proofs in files, useful for local testing.
 #[derive(Debug)]
@@ -24,7 +25,7 @@ pub struct FileBasedProofClient {
 impl Default for FileBasedProofClient {
     fn default() -> Self {
         Self {
-            base_dir: PathBuf::from("../../test_data/"),
+            base_dir: PathBuf::from("./outputs/"),
         }
     }
 }
@@ -45,11 +46,7 @@ impl FileBasedProofClient {
         Ok(String::new())
     }
 
-    pub fn serialize_fri_job(
-        &self,
-        block_number: u32,
-        prover_input: Vec<u8>,
-    ) -> anyhow::Result<()> {
+    pub fn serialize_fri_job(&self, block_number: u32, prover_input: &[u8]) -> anyhow::Result<()> {
         let path = self.base_dir.join(FRI_JOB_FILE);
         let mut file =
             std::fs::File::create(path).context(format!("Failed to create {FRI_JOB_FILE}"))?;
@@ -57,37 +54,41 @@ impl FileBasedProofClient {
             &mut file,
             &NextFriProverJobPayload {
                 block_number,
-                prover_input: STANDARD.encode(&prover_input),
+                prover_input: STANDARD.encode(prover_input),
             },
         )
         .context(format!("Failed to write {FRI_JOB_FILE}"))?;
         Ok(())
     }
 
-    pub fn serialize_snark_job(&self, snark_proof_inputs: SnarkProofInputs) -> anyhow::Result<()> {
+    pub fn serialize_snark_job(&self, snark_proof_inputs: &SnarkProofInputs) -> anyhow::Result<()> {
         let path = self.base_dir.join(SNARK_JOB_FILE);
         let mut file =
             std::fs::File::create(path).context(format!("Failed to create {SNARK_JOB_FILE}"))?;
-        let fri_proofs = snark_proof_inputs
-            .fri_proofs
-            .iter()
-            .map(|proof| {
-                let proof_bytes: Vec<u8> =
-                    bincode::serde::encode_to_vec(proof, bincode::config::standard())
-                        .expect("failed to bincode-serialize proof");
-                STANDARD.encode(&proof_bytes)
-            })
-            .collect::<Vec<String>>();
-        serde_json::to_writer_pretty(
-            &mut file,
-            &GetSnarkProofPayload {
-                block_number_from: snark_proof_inputs.from_block_number.0 as u64,
-                block_number_to: snark_proof_inputs.to_block_number.0 as u64,
-                fri_proofs,
-            },
-        )
-        .context(format!("Failed to write {SNARK_JOB_FILE}"))?;
+        serde_json::to_writer_pretty(&mut file, &snark_proof_inputs)
+            .context(format!("Failed to write {SNARK_JOB_FILE}"))?;
         Ok(())
+    }
+
+    pub fn serialize_failed_fri_proof(
+        &self,
+        failed_fri_proof: &FailedFriProofPayload,
+    ) -> anyhow::Result<()> {
+        let path = self.base_dir.join(FAILED_FRI_PROOF_FILE);
+        let mut file = std::fs::File::create(path)
+            .context(format!("Failed to create {FAILED_FRI_PROOF_FILE}"))?;
+        serde_json::to_writer_pretty(&mut file, &failed_fri_proof)
+            .context(format!("Failed to write {FAILED_FRI_PROOF_FILE}"))?;
+        Ok(())
+    }
+
+    pub fn deserialize_failed_fri_proof(&self) -> anyhow::Result<FailedFriProofPayload> {
+        let path = self.base_dir.join(FAILED_FRI_PROOF_FILE);
+        let file =
+            std::fs::File::open(path).context(format!("Failed to open {FAILED_FRI_PROOF_FILE}"))?;
+        let failed_fri_proof: FailedFriProofPayload = serde_json::from_reader(file)
+            .context(format!("Failed to parse {FAILED_FRI_PROOF_FILE}"))?;
+        Ok(failed_fri_proof)
     }
 }
 
