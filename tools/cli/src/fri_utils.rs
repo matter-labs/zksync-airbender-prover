@@ -136,7 +136,7 @@ fn prove_fri_job_from_input(
     tracing::info!("Binary loaded successfully");
 
     // Create proof
-    tracing::info!("Creating proof (this may take a while)...");
+    tracing::info!("Creating proof");
 
     #[cfg(feature = "gpu")]
     let mut gpu_state = GpuSharedState::new(

@@ -7,8 +7,8 @@ CLI tool for debugging proofs in ZKsync OS.
 ### 1. Peek and Save FRI Job
 ```bash
 cargo run --release --bin zksync-airbender-prover-cli -- \
-  --url http://localhost:3124 \
   peek-and-save-fri-job \
+  --url http://localhost:3124 \
   --block-number 123 \
   --output-dir ./jobs
 ```
@@ -16,8 +16,8 @@ cargo run --release --bin zksync-airbender-prover-cli -- \
 ### 2. Prove FRI Job from Peek
 ```bash
 cargo run --release --features gpu --bin zksync-airbender-prover-cli -- \
-  --url http://localhost:3124 \
   prove-fri-job-from-peek \
+  --url http://localhost:3124 \
   --block-number 123 \
   --app-bin-path ./multiblock_batch.bin \
   --circuit-limit 10000 \
@@ -34,11 +34,6 @@ cargo run --release --features gpu --bin zksync-airbender-prover-cli -- \
   --circuit-limit 10000 \
   --output-path ./proof.json
 ```
-
-## Requirements
-
-- GPU with 24GB+ VRAM for proof generation (`--features gpu`)
-- Bellman CUDA installed for GPU support
 
 ## Usage
 
