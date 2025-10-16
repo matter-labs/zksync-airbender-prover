@@ -61,7 +61,7 @@ enum Commands {
 
     /// Load a prover job from file and create proof
     ProveFriJobFromFile {
-        /// Block number (used to find fri_job_{block_number}.json)
+        /// Block number 
         #[arg(short, long, value_name = "BLOCK_NUMBER")]
         block_number: u32,
 

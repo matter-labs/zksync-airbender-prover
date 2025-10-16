@@ -45,7 +45,7 @@ pub async fn prove_fri_job_from_peek(
 
     let sequencer_client = SequencerProofClient::new(server_url.to_string());
 
-    // Step 1: Fetch job from server
+    // Peek job from server
     tracing::info!("Fetching FRI job from server...");
     let (block_num, prover_input_bytes) = sequencer_client
         .peek_fri_job(block_number)
@@ -54,19 +54,18 @@ pub async fn prove_fri_job_from_peek(
 
     tracing::info!("Successfully fetched job for block {block_num}");
 
-    // Step 2: Convert bytes to u32 vec
     let prover_input = bytes_to_u32_vec(&prover_input_bytes);
     tracing::info!("Prover input size: {:?} u32 values", prover_input.len());
 
-    // Step 3: Create proof
+    // Create proof
     let proof = prove_fri_job_from_input(prover_input, app_bin_path, circuit_limit)?;
 
-    // Step 4: Save proof if requested
+    // Save proof if requested
     if let Some(output_path) = output_path {
         save_fri_proof(&proof, output_path)?;
     }
 
-    // Step 5: Try to verify with failed proof data
+    // Try to verify with failed proof data
     let failed_fri_proof = sequencer_client.get_failed_fri_proof(block_number).await?;
     if let Some(failed_fri_proof) = failed_fri_proof {
         verify_fri_proof_with_failed_proof(failed_fri_proof, proof)?;
@@ -87,7 +86,7 @@ pub async fn prove_fri_job_from_file(
     let file_based_proof_client =
         FileBasedProofClient::new(input_dir.to_str().unwrap().to_string());
 
-    // Step 1: Load job from file
+    // Load job from file
     tracing::info!("Loading FRI job from file...");
     let (block_num, prover_input_bytes) = file_based_proof_client
         .pick_fri_job()
@@ -98,19 +97,18 @@ pub async fn prove_fri_job_from_file(
 
     tracing::info!("Successfully loaded job for block {block_num}");
 
-    // Step 2: Convert bytes to u32 vec
     let prover_input = bytes_to_u32_vec(&prover_input_bytes);
     tracing::info!("Prover input size: {:?} u32 values", prover_input.len());
 
-    // Step 3: Create proof
+    // Create proof
     let proof = prove_fri_job_from_input(prover_input, app_bin_path, circuit_limit)?;
 
-    // Step 4: Save proof if requested
+    // Save proof if requested
     if let Some(output_path) = output_path {
         save_fri_proof(&proof, output_path)?;
     }
 
-    // Step 5: Try to verify with failed proof data
+    // Try to verify with failed proof data
     let failed_fri_proof = file_based_proof_client.deserialize_failed_fri_proof()?;
     verify_fri_proof_with_failed_proof(failed_fri_proof, proof)?;
 
