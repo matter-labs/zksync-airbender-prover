@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
-use tracing_subscriber::{fmt, EnvFilter};
-use zksync_airbender_prover_cli::fri_utils::{
+use prover_debugging_cli::fri_utils::{
     peek_fri_job_and_save, prove_fri_job_from_file, prove_fri_job_from_peek,
 };
+use std::path::PathBuf;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser)]
-#[command(author, version, about = "ZKsync OS Prover CLI", long_about = None)]
+#[command(author, version, about = "ZKsync OS Prover Debugging CLI", long_about = None)]
 struct Cli {
     /// Base URL of the prover API server
     #[arg(
@@ -61,7 +61,7 @@ enum Commands {
 
     /// Load a prover job from file and create proof
     ProveFriJobFromFile {
-        /// Block number 
+        /// Block number
         #[arg(short, long, value_name = "BLOCK_NUMBER")]
         block_number: u32,
 

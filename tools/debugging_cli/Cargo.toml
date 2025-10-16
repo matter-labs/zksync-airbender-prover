@@ -1,5 +1,5 @@
 [package]
-name = "zksync-airbender-prover-cli"
+name = "prover-debugging-cli"
 edition.workspace = true
 version.workspace = true
 authors.workspace = true
@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [[bin]]
-name = "zksync-airbender-prover-cli"
+name = "prover-debugging-cli"
 path = "src/main.rs"
 
 [dependencies]
