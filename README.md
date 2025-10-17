@@ -51,7 +51,7 @@ cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http
 ```
 Specify optional `--iterations` argument to run FRI prover N times and then exit.
 Specify optional `--path` argument if you want to serialize FRI proof to file.
-Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 300s).
+Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 2s).
 
 **This command currently requires around 140 GB of RAM - and GPU**
 
@@ -63,7 +63,7 @@ ulimit -s 300000
 RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs
 ```
 Specify optional `--iterations` argument to run SNARK prover N times and then exit.
-Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 300s).
+Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 2s).
 
 **This one is only needed if you want to manually upload.**
 

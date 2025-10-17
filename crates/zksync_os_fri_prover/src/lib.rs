@@ -49,7 +49,7 @@ pub struct Args {
     pub prometheus_port: u16,
 
     /// Timeout for HTTP requests to sequencer in seconds. If no response is received within this time, the prover will exit.
-    #[arg(long, default_value = "300")]
+    #[arg(long, default_value = "2")]
     pub request_timeout_secs: u64,
 }
 
