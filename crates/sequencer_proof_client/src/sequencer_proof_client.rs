@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::metrics::Method;
 use crate::{
@@ -23,8 +23,17 @@ pub struct SequencerProofClient {
 
 impl SequencerProofClient {
     pub fn new(sequencer_url: String) -> Self {
+        Self::new_with_timeout(sequencer_url, None)
+    }
+
+    pub fn new_with_timeout(sequencer_url: String, timeout: Option<Duration>) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(timeout.unwrap_or(Duration::from_secs(2))) // default timeout is 2 seconds
+            .build()
+            .expect("Failed to create reqwest client");
+
         Self {
-            client: reqwest::Client::new(),
+            client,
             url: sequencer_url,
         }
     }
