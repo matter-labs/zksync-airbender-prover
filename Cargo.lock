@@ -2815,6 +2815,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "prover-debugging-cli"
+version = "0.4.7"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bincode 2.0.1",
+ "clap",
+ "cli",
+ "execution_utils",
+ "proof-compression",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zkos-wrapper",
+ "zksync_os_fri_prover",
+ "zksync_os_snark_prover",
+ "zksync_sequencer_proof_client",
+]
+
+[[package]]
 name = "prover_examples"
 version = "0.1.0"
 source = "git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.0#a3c74040d2f994608f451550232392333400bbf1"
