@@ -47,6 +47,10 @@ pub struct Args {
     /// Port to run the Prometheus metrics server on
     #[arg(long, default_value = "3124")]
     pub prometheus_port: u16,
+
+    /// Timeout for HTTP requests to sequencer in seconds. If no response is received within this time, the prover will exit.
+    #[arg(long, default_value = "300")]
+    pub request_timeout_secs: u64,
 }
 
 pub fn init_tracing() {
@@ -90,7 +94,10 @@ pub fn create_proof(
 }
 
 pub async fn run(args: Args) {
-    let client = SequencerProofClient::new(args.base_url);
+    use std::time::Duration;
+
+    let timeout = Duration::from_secs(args.request_timeout_secs);
+    let client = SequencerProofClient::new_with_timeout(args.base_url, Some(timeout));
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -111,8 +118,9 @@ pub async fn run(args: Args) {
     let mut gpu_state = GpuSharedState::new(&binary);
 
     tracing::info!(
-        "Starting Zksync OS FRI prover for {}",
-        client.sequencer_url()
+        "Starting Zksync OS FRI prover for {} with request timeout of {}s",
+        client.sequencer_url(),
+        args.request_timeout_secs
     );
 
     let mut proof_count = 0;
@@ -150,6 +158,16 @@ pub async fn run_inner<P: ProofClient>(
 ) -> anyhow::Result<bool> {
     let (block_number, prover_input) = match client.pick_fri_job().await {
         Err(err) => {
+            // Check if the error is a timeout error
+            if err
+                .downcast_ref::<reqwest::Error>()
+                .map(|e| e.is_timeout())
+                .unwrap_or(false)
+            {
+                tracing::error!("Timeout waiting for response from sequencer: {err}");
+                tracing::error!("Exiting prover due to timeout");
+                return Err(err);
+            }
             tracing::error!("Error fetching next prover job: {err}");
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
             return Ok(false);
@@ -199,6 +217,20 @@ pub async fn run_inner<P: ProofClient>(
             block_number
         ),
         Err(err) => {
+            // Check if the error is a timeout error
+            if err
+                .downcast_ref::<reqwest::Error>()
+                .map(|e| e.is_timeout())
+                .unwrap_or(false)
+            {
+                tracing::error!(
+                    "Timeout submitting proof for block number {}: {}",
+                    block_number,
+                    err
+                );
+                tracing::error!("Exiting prover due to timeout");
+                return Err(err);
+            }
             tracing::error!(
                 "Failed to submit proof for block number {}: {}",
                 block_number,

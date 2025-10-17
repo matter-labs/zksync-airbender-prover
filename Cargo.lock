@@ -5071,6 +5071,7 @@ dependencies = [
  "cli",
  "execution_utils",
  "proof-compression",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
