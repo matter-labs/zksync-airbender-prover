@@ -75,13 +75,12 @@ pub async fn prove_fri_job_from_peek(
 }
 
 pub async fn prove_fri_job_from_file(
-    block_number: u32,
     input_dir: &std::path::Path,
     app_bin_path: &std::path::Path,
     circuit_limit: usize,
     output_path: Option<&std::path::Path>,
 ) -> Result<()> {
-    tracing::info!("Starting prove-from-file for block {block_number}");
+    tracing::info!("Starting prove-from-file");
 
     let file_based_proof_client =
         FileBasedProofClient::new(input_dir.to_str().unwrap().to_string());
@@ -91,9 +90,7 @@ pub async fn prove_fri_job_from_file(
     let (block_num, prover_input_bytes) = file_based_proof_client
         .pick_fri_job()
         .await?
-        .ok_or_else(|| {
-            anyhow!("No FRI job file found for block {block_number} in {input_dir:?}")
-        })?;
+        .ok_or_else(|| anyhow!("No FRI job file found in {input_dir:?}"))?;
 
     tracing::info!("Successfully loaded job for block {block_num}");
 

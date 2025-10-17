@@ -15,9 +15,11 @@ path = "src/main.rs"
 
 [dependencies]
 zksync_os_fri_prover = { path = "../../crates/zksync_os_fri_prover" }
+zksync_os_snark_prover = { path = "../../crates/zksync_os_snark_prover" }
 zksync_sequencer_proof_client = { path = "../../crates/sequencer_proof_client" }
 zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
+zkos_wrapper.workspace = true
 
 anyhow.workspace = true
 base64.workspace = true
@@ -30,6 +32,8 @@ tokio = { workspace = true, features = ["full"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+proof-compression = { workspace = true, optional = true }
+
 [features]
-gpu = ["zksync_airbender_cli/gpu", "zksync_os_fri_prover/gpu"]
+gpu = ["zksync_airbender_cli/gpu", "zksync_os_fri_prover/gpu", "zksync_os_snark_prover/gpu", "zkos_wrapper/gpu", "dep:proof-compression"]
 

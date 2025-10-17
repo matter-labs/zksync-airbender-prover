@@ -2824,13 +2824,16 @@ dependencies = [
  "clap",
  "cli",
  "execution_utils",
+ "proof-compression",
  "reqwest",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "zkos-wrapper",
  "zksync_os_fri_prover",
+ "zksync_os_snark_prover",
  "zksync_sequencer_proof_client",
 ]
 
