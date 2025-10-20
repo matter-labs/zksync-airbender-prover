@@ -166,7 +166,8 @@ pub async fn run_inner<P: ProofClient>(
             {
                 tracing::error!("Timeout waiting for response from sequencer: {err}");
                 tracing::error!("Exiting prover due to timeout");
-                return Err(err);
+                FRI_PROVER_METRICS.timeout_errors.inc();
+                return Ok(false);
             }
             tracing::error!("Error fetching next prover job: {err}");
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -229,7 +230,7 @@ pub async fn run_inner<P: ProofClient>(
                     err
                 );
                 tracing::error!("Exiting prover due to timeout");
-                return Err(err);
+                FRI_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
                 "Failed to submit proof for block number {}: {}",

@@ -255,7 +255,8 @@ pub async fn run_inner<P: ProofClient>(
             {
                 tracing::error!("Timeout waiting for response from sequencer: {e:?}");
                 tracing::error!("Exiting prover due to timeout");
-                return Err(e);
+                SNARK_PROVER_METRICS.timeout_errors.inc();
+                return Ok(false);
             }
             tracing::info!("Failed to pick SNARK job due to {e:?}, retrying in 30s");
             tokio::time::sleep(Duration::from_secs(30)).await;
@@ -368,7 +369,7 @@ pub async fn run_inner<P: ProofClient>(
                     end_block
                 );
                 tracing::error!("Exiting prover due to timeout");
-                return Err(e);
+                SNARK_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
                 "Failed to submit SNARK job, blocks {} to {} due to {e:?}, skipping",
