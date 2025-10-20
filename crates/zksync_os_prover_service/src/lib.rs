@@ -75,7 +75,8 @@ pub async fn run(args: Args) {
     let precomputations = {
         tracing::info!("Computing SNARK precomputations");
         let compression_vk = compute_compression_vk(binary_path.to_str().unwrap().to_string());
-        let precomputations = gpu_create_snark_setup_data(compression_vk, &args.trusted_setup_file);
+        let precomputations =
+            gpu_create_snark_setup_data(&compression_vk, &args.trusted_setup_file);
         tracing::info!("Finished computing SNARK precomputations");
         precomputations
     };
@@ -140,7 +141,7 @@ pub async fn run(args: Args) {
                 args.output_dir.clone(),
                 args.trusted_setup_file.clone(),
                 #[cfg(feature = "gpu")]
-                precomputations.clone(),
+                &precomputations,
             )
             .await
             .expect("Failed to run SNARK prover");
