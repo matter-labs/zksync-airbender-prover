@@ -51,6 +51,9 @@ enum Commands {
         /// Port to run the Prometheus metrics server on
         #[arg(long, default_value = "3124")]
         prometheus_port: u16,
+        /// Timeout for HTTP requests to sequencer in seconds. If no response is received within this time, the prover will exit.
+        #[arg(long, default_value = "2")]
+        request_timeout_secs: u64,
     },
 }
 
@@ -84,6 +87,7 @@ fn main() {
             // mode,
             iterations,
             prometheus_port,
+            request_timeout_secs,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -109,6 +113,7 @@ fn main() {
                         output_dir,
                         trusted_setup_file,
                         iterations,
+                        request_timeout_secs,
                     ) => {
                         tracing::info!("SNARK prover finished");
                         result.expect("SNARK prover finished with error");

@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use tokio::sync::watch;
-use vise::{Gauge, Histogram, Metrics, MetricsCollection};
+use vise::{Counter, Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
 
 pub async fn start_metrics_exporter(
@@ -39,6 +39,8 @@ pub struct SnarkProverMetrics {
     pub time_taken_full: Histogram,
     pub fri_proofs_merged: Gauge,
     pub latest_proven_block: Gauge,
+    /// Number of timeout errors when communicating with sequencer
+    pub timeout_errors: Counter,
 }
 
 #[vise::register]

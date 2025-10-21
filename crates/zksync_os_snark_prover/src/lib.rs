@@ -166,13 +166,20 @@ pub async fn run_linking_fri_snark(
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
+    request_timeout_secs: u64,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
-    let sequencer_client = SequencerProofClient::new(sequencer_url.clone());
+    let timeout = Duration::from_secs(request_timeout_secs);
+    let sequencer_client =
+        SequencerProofClient::new_with_timeout(sequencer_url.clone(), Some(timeout));
 
     let startup_started_at = Instant::now();
 
-    tracing::info!("Starting zksync_os_snark_prover");
+    tracing::info!(
+        "Starting zksync_os_snark_prover for {} with request timeout of {}s",
+        sequencer_url,
+        request_timeout_secs
+    );
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     #[cfg(feature = "gpu")]
@@ -241,6 +248,16 @@ pub async fn run_inner<P: ProofClient>(
             return Ok(false);
         }
         Err(e) => {
+            // Check if the error is a timeout error
+            if e.downcast_ref::<reqwest::Error>()
+                .map(|err| err.is_timeout())
+                .unwrap_or(false)
+            {
+                tracing::error!("Timeout waiting for response from sequencer: {e:?}");
+                tracing::error!("Exiting prover due to timeout");
+                SNARK_PROVER_METRICS.timeout_errors.inc();
+                return Ok(false);
+            }
             tracing::info!("Failed to pick SNARK job due to {e:?}, retrying in 30s");
             tokio::time::sleep(Duration::from_secs(30)).await;
             return Ok(false);
@@ -341,6 +358,19 @@ pub async fn run_inner<P: ProofClient>(
                 .set(end_block.0 as i64);
         }
         Err(e) => {
+            // Check if the error is a timeout error
+            if e.downcast_ref::<reqwest::Error>()
+                .map(|err| err.is_timeout())
+                .unwrap_or(false)
+            {
+                tracing::error!(
+                    "Timeout submitting SNARK proof for blocks {} to {}: {e:?}",
+                    start_block,
+                    end_block
+                );
+                tracing::error!("Exiting prover due to timeout");
+                SNARK_PROVER_METRICS.timeout_errors.inc();
+            }
             tracing::error!(
                 "Failed to submit SNARK job, blocks {} to {} due to {e:?}, skipping",
                 start_block,
