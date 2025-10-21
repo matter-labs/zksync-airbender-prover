@@ -61,7 +61,7 @@ pub fn generate_verification_key(
 pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,
-    gpu_state: &mut GpuSharedState,
+    gpu_state: &mut Option<&mut GpuSharedState>,
 ) -> ProgramProof {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
@@ -104,7 +104,7 @@ pub fn merge_fris(
             &zksync_airbender_execution_utils::Machine::Reduced,
             100, // Guessing - FIXME!!
             Some(first_metadata.create_prev_metadata()),
-            &mut Some(gpu_state),
+            gpu_state,
             &mut Some(0f64),
         );
         // Let's do recursion.
@@ -122,7 +122,7 @@ pub fn merge_fris(
                 &Machine::Reduced,
                 proof_metadata.total_proofs(),
                 Some(proof_metadata.create_prev_metadata()),
-                &mut Some(gpu_state),
+                gpu_state,
                 &mut Some(0f64),
             );
         }
@@ -186,7 +186,7 @@ pub async fn run_linking_fri_snark(
     let precomputations = {
         tracing::info!("Computing SNARK precomputations");
         let compression_vk = compute_compression_vk(_binary_path);
-        let precomputations = gpu_create_snark_setup_data(compression_vk, &trusted_setup_file);
+        let precomputations = gpu_create_snark_setup_data(&compression_vk, &trusted_setup_file);
         tracing::info!("Finished computing SNARK precomputations");
         precomputations
     };
@@ -204,7 +204,7 @@ pub async fn run_linking_fri_snark(
             output_dir.clone(),
             trusted_setup_file.clone(),
             #[cfg(feature = "gpu")]
-            precomputations.clone(),
+            &precomputations,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -225,7 +225,7 @@ pub async fn run_inner<P: ProofClient>(
     verifier_binary: &Vec<u32>,
     output_dir: String,
     trusted_setup_file: String,
-    #[cfg(feature = "gpu")] precomputations: (
+    #[cfg(feature = "gpu")] precomputations: &(
         PlonkSnarkVerifierCircuitDeviceSetupWrapper,
         SnarkWrapperVK,
     ),
@@ -272,18 +272,20 @@ pub async fn run_inner<P: ProofClient>(
     );
     tracing::info!("Initializing GPU state");
     #[cfg(feature = "gpu")]
-    let mut gpu_state = GpuSharedState::new(
+    let mut gpu_state_store = GpuSharedState::new(
         verifier_binary,
         zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
     );
+    #[cfg(feature = "gpu")]
+    let mut gpu_state = Some(&mut gpu_state_store);
     #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = GpuSharedState::new(verifier_binary);
+    let mut gpu_state = None;
     tracing::info!("Finished initializing GPU state");
     let proof = merge_fris(snark_proof_input, verifier_binary, &mut gpu_state);
 
     // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
     #[cfg(feature = "gpu")]
-    drop(gpu_state);
+    drop(gpu_state_store);
 
     tracing::info!("Creating final proof before SNARKification");
 
@@ -291,13 +293,10 @@ pub async fn run_inner<P: ProofClient>(
     let final_proof = create_final_proofs_from_program_proof(
         proof,
         RecursionStrategy::UseReducedLog23Machine,
-        // TODO: currently enabled GPU on final proofs, but we should have a switch in the main program
-        // that allow people to run in 3 modes:
-        // - cpu only
-        // - small gpu (then this is false)
-        // - gpu (a.k.a large gpu) - then this is true.
-        // NOTE: use this as false, if you want to run on a small GPU
+        #[cfg(feature = "gpu")]
         true,
+        #[cfg(not(feature = "gpu"))]
+        false,
     );
     SNARK_PROVER_METRICS
         .time_taken_final_proof
@@ -316,7 +315,8 @@ pub async fn run_inner<P: ProofClient>(
         Some(trusted_setup_file.clone()),
         false,
         #[cfg(feature = "gpu")]
-        Some(precomputations.clone()),
+        Some(precomputations),
+        true,
     ) {
         Ok(()) => {
             tracing::info!(
