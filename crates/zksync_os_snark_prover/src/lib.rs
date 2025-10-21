@@ -11,13 +11,14 @@ use zkos_wrapper::{
 };
 use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
-    create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
+    create_final_proofs_from_program_proof, create_proofs_internal,
 };
 use zksync_airbender_execution_utils::{
     generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
     get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
+use zksync_os_prover_common::MultiBinaryProver;
 use zksync_sequencer_proof_client::{
     sequencer_proof_client::SequencerProofClient, ProofClient, SnarkProofInputs,
 };
@@ -61,7 +62,7 @@ pub fn generate_verification_key(
 pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,
-    gpu_state: &mut GpuSharedState,
+    _multi_prover: &mut MultiBinaryProver<usize>,
 ) -> ProgramProof {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
@@ -104,7 +105,10 @@ pub fn merge_fris(
             &zksync_airbender_execution_utils::Machine::Reduced,
             100, // Guessing - FIXME!!
             Some(first_metadata.create_prev_metadata()),
-            &mut Some(gpu_state),
+            #[cfg(feature = "gpu")]
+            &mut Some(_multi_prover.execution_prover_mut()),
+            #[cfg(not(feature = "gpu"))]
+            &mut None,
             &mut Some(0f64),
         );
         // Let's do recursion.
@@ -122,7 +126,10 @@ pub fn merge_fris(
                 &Machine::Reduced,
                 proof_metadata.total_proofs(),
                 Some(proof_metadata.create_prev_metadata()),
-                &mut Some(gpu_state),
+                #[cfg(feature = "gpu")]
+                &mut Some(_multi_prover.execution_prover_mut()),
+                #[cfg(not(feature = "gpu"))]
+                &mut None,
                 &mut Some(0f64),
             );
         }
@@ -255,18 +262,18 @@ pub async fn run_inner<P: ProofClient>(
     );
     tracing::info!("Initializing GPU state");
     #[cfg(feature = "gpu")]
-    let mut gpu_state = GpuSharedState::new(
-        verifier_binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-    );
-    #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = GpuSharedState::new(verifier_binary);
-    tracing::info!("Finished initializing GPU state");
-    let proof = merge_fris(snark_proof_input, verifier_binary, &mut gpu_state);
-
-    // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
+    let main_binaries = vec![(0, MainCircuitType::RiscVCycles, verifier_binary.clone())];
     #[cfg(feature = "gpu")]
-    drop(gpu_state);
+    let mut multi_prover =
+        MultiBinaryProver::new(1, main_binaries, MainCircuitType::ReducedRiscVMachine, 1);
+    #[cfg(not(feature = "gpu"))]
+    let mut multi_prover = MultiBinaryProver::new();
+    tracing::info!("Finished initializing GPU state");
+    let proof = merge_fris(snark_proof_input, verifier_binary, &mut multi_prover);
+
+    // Drop multi_prover to release the airbender GPU resources (as now Final Proof will be taking them).
+    #[cfg(feature = "gpu")]
+    drop(multi_prover);
 
     tracing::info!("Creating final proof before SNARKification");
 

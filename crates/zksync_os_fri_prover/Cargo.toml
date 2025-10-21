@@ -14,6 +14,7 @@ categories.workspace = true
 zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
 zksync_sequencer_proof_client = { path = "../sequencer_proof_client" }
+zksync_os_prover_common = { path = "../zksync_os_prover_common" }
 
 anyhow.workspace = true
 base64.workspace = true
@@ -29,4 +30,4 @@ vise.workspace = true
 vise-exporter.workspace = true
 
 [features]
-gpu = ["zksync_airbender_cli/gpu"]
+gpu = ["zksync_airbender_cli/gpu", "zksync_os_prover_common/gpu"]

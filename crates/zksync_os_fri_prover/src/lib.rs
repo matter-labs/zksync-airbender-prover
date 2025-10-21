@@ -9,7 +9,6 @@ use clap::Parser;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
-    GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
@@ -17,7 +16,7 @@ use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient
 use crate::metrics::FRI_PROVER_METRICS;
 
 pub mod metrics;
-
+pub use zksync_os_prover_common::MultiBinaryProver;
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
@@ -58,7 +57,7 @@ pub fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,
     circuit_limit: usize,
-    _gpu_state: &mut GpuSharedState,
+    _multi_prover: &mut MultiBinaryProver<usize>,
 ) -> ProgramProof {
     let mut timing = Some(0f64);
     let (proof_list, proof_metadata) = create_proofs_internal(
@@ -68,7 +67,7 @@ pub fn create_proof(
         circuit_limit,
         None,
         #[cfg(feature = "gpu")]
-        &mut Some(_gpu_state),
+        &mut Some(_multi_prover.execution_prover_mut()),
         #[cfg(not(feature = "gpu"))]
         &mut None,
         &mut timing, // timing info
@@ -80,7 +79,7 @@ pub fn create_proof(
         RecursionStrategy::UseReducedLog23Machine,
         &None,
         #[cfg(feature = "gpu")]
-        &mut Some(_gpu_state),
+        &mut Some(_multi_prover.execution_prover_mut()),
         #[cfg(not(feature = "gpu"))]
         &mut None,
         &mut timing, // timing info
@@ -101,14 +100,23 @@ pub async fn run(args: Args) {
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
-    // For regular fri proving, we keep using reduced RiscV machine.
+
     #[cfg(feature = "gpu")]
-    let mut gpu_state = GpuSharedState::new(
-        &binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+    use zksync_airbender_gpu_prover::circuit_type::MainCircuitType;
+
+    #[cfg(feature = "gpu")]
+    let main_binaries = vec![(0, MainCircuitType::RiscVCycles, binary.clone())];
+
+    #[cfg(feature = "gpu")]
+    let mut multi_prover = MultiBinaryProver::new(
+        1,                                    // max_concurrent_batches
+        main_binaries,                        // your main binaries
+        MainCircuitType::ReducedRiscVMachine, // recursion circuit type
+        1,                                    // recursion key
     );
+
     #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = GpuSharedState::new(&binary);
+    let mut multi_prover = MultiBinaryProver::new();
 
     tracing::info!(
         "Starting Zksync OS FRI prover for {}",
@@ -122,7 +130,7 @@ pub async fn run(args: Args) {
             &client,
             &binary,
             args.circuit_limit,
-            &mut gpu_state,
+            &mut multi_prover,
             args.path.clone(),
         )
         .await
@@ -144,8 +152,8 @@ pub async fn run_inner<P: ProofClient>(
     client: &P,
     binary: &Vec<u32>,
     circuit_limit: usize,
-    #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,
-    #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
+    #[cfg(feature = "gpu")] multi_prover: &mut MultiBinaryProver<usize>,
+    #[cfg(not(feature = "gpu"))] multi_prover: &mut MultiBinaryProver<usize>,
     path: Option<PathBuf>,
 ) -> anyhow::Result<bool> {
     let (block_number, prover_input) = match client.pick_fri_job().await {
@@ -172,7 +180,7 @@ pub async fn run_inner<P: ProofClient>(
 
     tracing::info!("Starting proving block number {}", block_number);
 
-    let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
+    let proof = create_proof(prover_input, binary, circuit_limit, multi_prover);
 
     tracing::info!("Finished proving block number {}", block_number);
     let proof_bytes: Vec<u8> = bincode::serde::encode_to_vec(&proof, bincode::config::standard())

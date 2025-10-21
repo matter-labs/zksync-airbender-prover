@@ -13,6 +13,7 @@ categories.workspace = true
 [dependencies]
 #zksync_prover_job_processor.workspace = true
 zksync_sequencer_proof_client = { path = "../sequencer_proof_client" }
+zksync_os_prover_common = { path = "../zksync_os_prover_common" }
 
 zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
@@ -36,4 +37,4 @@ vise.workspace = true
 vise-exporter.workspace = true
 
 [features]
-gpu = ["zksync_airbender_cli/gpu", "zkos_wrapper/gpu", "proof-compression/gpu"]
+gpu = ["zksync_airbender_cli/gpu", "zkos_wrapper/gpu", "proof-compression/gpu", "zksync_os_prover_common/gpu"]

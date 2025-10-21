@@ -1,0 +1,13 @@
+[package]
+name = "zksync_os_prover_common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Execution utils for universal verifier binary
+zksync_airbender_execution_utils = { workspace = true, optional = true }
+
+[features]
+default = []
+gpu = ["zksync_airbender_execution_utils"]
+

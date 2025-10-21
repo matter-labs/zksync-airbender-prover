@@ -5038,7 +5038,15 @@ dependencies = [
  "tracing-subscriber",
  "vise",
  "vise-exporter",
+ "zksync_os_prover_common",
  "zksync_sequencer_proof_client",
+]
+
+[[package]]
+name = "zksync_os_prover_common"
+version = "0.1.0"
+dependencies = [
+ "execution_utils",
 ]
 
 [[package]]
@@ -5079,6 +5087,7 @@ dependencies = [
  "vise",
  "vise-exporter",
  "zkos-wrapper",
+ "zksync_os_prover_common",
  "zksync_sequencer_proof_client",
 ]
 

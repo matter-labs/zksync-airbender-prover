@@ -8,11 +8,10 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
 use zksync_airbender_cli::prover_utils::load_binary_from_path;
-#[cfg(not(feature = "gpu"))]
-use zksync_airbender_cli::prover_utils::GpuSharedState;
 #[cfg(feature = "gpu")]
 use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
+use zksync_os_fri_prover::MultiBinaryProver;
 #[cfg(feature = "gpu")]
 use zksync_os_snark_prover::compute_compression_vk;
 use zksync_sequencer_proof_client::sequencer_proof_client::SequencerProofClient;
@@ -93,12 +92,12 @@ pub async fn run(args: Args) {
 
         // For regular fri proving, we keep using reduced RiscV machine.
         #[cfg(feature = "gpu")]
-        let mut gpu_state = GpuSharedState::new(
-            &binary,
-            zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-        );
+        let main_binaries = vec![(0, MainCircuitType::RiscVCycles, binary.clone())];
+        #[cfg(feature = "gpu")]
+        let mut multi_prover =
+            MultiBinaryProver::new(1, main_binaries, MainCircuitType::ReducedRiscVMachine, 1);
         #[cfg(not(feature = "gpu"))]
-        let mut gpu_state = GpuSharedState::new(&binary);
+        let mut multi_prover = MultiBinaryProver::new();
 
         // Run FRI prover until we hit one of the limits
         tracing::info!("Running FRI prover");
@@ -107,7 +106,7 @@ pub async fn run(args: Args) {
                 &client,
                 &binary,
                 args.circuit_limit,
-                &mut gpu_state,
+                &mut multi_prover,
                 args.fri_path.clone(),
             )
             .await
@@ -129,7 +128,7 @@ pub async fn run(args: Args) {
             }
         }
         #[cfg(feature = "gpu")]
-        drop(gpu_state);
+        drop(multi_prover);
 
         // Here we do exactly one SNARK proof
         tracing::info!("Running SNARK prover");
