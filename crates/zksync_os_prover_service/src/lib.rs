@@ -50,6 +50,9 @@ pub struct Args {
     /// Path to the output file for FRI proofs
     #[arg(short, long)]
     pub fri_path: Option<PathBuf>,
+    /// Disable ZK for SNARK proofs
+    #[arg(long, default_value_t = false)]
+    disable_zk: bool,
 }
 
 pub fn init_tracing() {
@@ -142,6 +145,7 @@ pub async fn run(args: Args) {
                 args.trusted_setup_file.clone(),
                 #[cfg(feature = "gpu")]
                 &precomputations,
+                args.disable_zk,
             )
             .await
             .expect("Failed to run SNARK prover");

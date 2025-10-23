@@ -167,6 +167,7 @@ pub async fn run_linking_fri_snark(
     trusted_setup_file: String,
     iterations: Option<usize>,
     request_timeout_secs: u64,
+    disable_zk: bool,
 ) -> anyhow::Result<()> {
     let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
     let timeout = Duration::from_secs(request_timeout_secs);
@@ -205,6 +206,7 @@ pub async fn run_linking_fri_snark(
             trusted_setup_file.clone(),
             #[cfg(feature = "gpu")]
             &precomputations,
+            disable_zk,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -229,6 +231,7 @@ pub async fn run_inner<P: ProofClient>(
         PlonkSnarkVerifierCircuitDeviceSetupWrapper,
         SnarkWrapperVK,
     ),
+    disable_zk: bool,
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
     tracing::info!("Started picking job");
@@ -316,7 +319,8 @@ pub async fn run_inner<P: ProofClient>(
         false,
         #[cfg(feature = "gpu")]
         Some(precomputations),
-        true,
+        // note that the API is use_zk, so we invert the disable_zk flag
+        !disable_zk,
     ) {
         Ok(()) => {
             tracing::info!(
