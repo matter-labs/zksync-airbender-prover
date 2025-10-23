@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.9](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.4.8...v0.4.9) (2025-10-23)
+
+
+### Features
+
+* Add disable_zk flag to CLI ([#95](https://github.com/matter-labs/zksync-airbender-prover/issues/95)) ([4a74a09](https://github.com/matter-labs/zksync-airbender-prover/commit/4a74a0957b59d20e49ab0acd933ac22b878e341a))
+* Timeout for http requests ([#91](https://github.com/matter-labs/zksync-airbender-prover/issues/91)) ([b1929cd](https://github.com/matter-labs/zksync-airbender-prover/commit/b1929cd7b8b7255d197959cface79918d4634081))
+
 ## [0.4.8](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.4.7...v0.4.8) (2025-10-21)
 
 
