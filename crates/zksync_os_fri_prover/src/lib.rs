@@ -107,7 +107,7 @@ pub async fn run(args: Args) {
     };
 
     let supported_versions = SupportedProtocolVersions::default();
-    tracing::debug!("Supported protocol versions: {:?}", supported_versions);
+    tracing::info!("Supported protocol versions: {:?}", supported_versions);
 
     let binary_path = args
         .app_bin_path
@@ -142,7 +142,9 @@ pub async fn run(args: Args) {
         .await
         .expect("Failed to run FRI prover");
 
-        proof_count += proof_generated as usize;
+        if proof_generated {
+            proof_count += 1;
+        }
 
         // Check if we've reached the iteration limit
         if let Some(max_proofs_generated) = args.iterations {
@@ -209,11 +211,19 @@ pub async fn run_inner<P: ProofClient>(
         .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
         .collect();
 
-    tracing::info!("Starting proving block number {}", block_number);
+    tracing::info!(
+        "Starting proving block number {} with vk hash {}",
+        block_number,
+        vk_hash
+    );
 
     let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
 
-    tracing::info!("Finished proving block number {}", block_number);
+    tracing::info!(
+        "Finished proving block number {} with vk hash {}",
+        block_number,
+        vk_hash
+    );
     let proof_bytes: Vec<u8> = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
         .expect("failed to bincode-serialize proof");
 
@@ -233,12 +243,13 @@ pub async fn run_inner<P: ProofClient>(
         .observe(started_at.elapsed().as_secs_f64());
 
     match client
-        .submit_fri_proof(block_number, vk_hash, proof_b64)
+        .submit_fri_proof(block_number, vk_hash.clone(), proof_b64)
         .await
     {
         Ok(_) => tracing::info!(
-            "Successfully submitted proof for block number {}",
-            block_number
+            "Successfully submitted proof for block number {} with vk hash {}",
+            block_number,
+            vk_hash
         ),
         Err(err) => {
             // Check if the error is a timeout error
@@ -248,16 +259,18 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting proof for block number {}: {}",
+                    "Timeout submitting proof for block number {} with vk hash {}: {}",
                     block_number,
+                    vk_hash,
                     err
                 );
                 tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit proof for block number {}: {}",
+                "Failed to submit proof for block number {} with vk hash {}: {}",
                 block_number,
+                vk_hash,
                 err
             );
         }
