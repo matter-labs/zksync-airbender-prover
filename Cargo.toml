@@ -20,7 +20,7 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
-# local dependencies
+# internal dependencies
 zksync_sequencer_proof_client = { path = "crates/sequencer_proof_client" }
 protocol_version = { path = "crates/protocol_version" }
 
