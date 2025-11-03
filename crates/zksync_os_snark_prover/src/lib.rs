@@ -178,7 +178,7 @@ pub async fn run_linking_fri_snark(
     let startup_started_at = Instant::now();
 
     let supported_versions = SupportedProtocolVersions::default();
-    tracing::debug!("Supported protocol versions: {:?}", supported_versions);
+    tracing::info!("Supported protocol versions: {:?}", supported_versions);
 
     tracing::info!(
         "Starting zksync_os_snark_prover for {} with request timeout of {}s",
@@ -254,7 +254,7 @@ pub async fn run_inner<P: ProofClient>(
             }
             if !supported_protocol_versions.contains(&snark_proof_input.vk_hash) {
                 tracing::error!(
-                    "Unsupported protocol version with vk_hash {} for blocks between [{} and {}], skipping",
+                    "Received unsupported protocol version with vk_hash {} for blocks between [{} and {}], skipping",
                     snark_proof_input.vk_hash,
                     snark_proof_input.from_block_number.0,
                     snark_proof_input.to_block_number.0
@@ -289,10 +289,10 @@ pub async fn run_inner<P: ProofClient>(
     let vk_hash = snark_proof_input.vk_hash.clone();
 
     tracing::info!(
-        "Finished picking job, will aggregate from {} to {} inclusive (VK hash: {})",
+        "Finished picking job with VK hash {}, will aggregate from {} to {} inclusive",
+        vk_hash,
         start_block,
         end_block,
-        vk_hash
     );
     tracing::info!("Initializing GPU state");
     #[cfg(feature = "gpu")]
@@ -368,14 +368,15 @@ pub async fn run_inner<P: ProofClient>(
     );
 
     match client
-        .submit_snark_proof(start_block, end_block, vk_hash, snark_proof)
+        .submit_snark_proof(start_block, end_block, vk_hash.clone(), snark_proof)
         .await
     {
         Ok(()) => {
             tracing::info!(
-                "Successfully submitted SNARK proof for blocks {} to {}",
+                "Successfully submitted SNARK proof for blocks {} to {} with vk hash {}",
                 start_block,
-                end_block
+                end_block,
+                vk_hash,
             );
 
             SNARK_PROVER_METRICS
@@ -389,15 +390,17 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting SNARK proof for blocks {} to {}: {e:?}",
+                    "Timeout submitting SNARK proof with vk hash {} for blocks {} to {}: {e:?}",
+                    vk_hash,
                     start_block,
-                    end_block
+                    end_block,
                 );
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit SNARK job, blocks {} to {} due to {e:?}, skipping",
+                "Failed to submit SNARK job with vk hash {}, blocks {} to {} due to {e:?}, skipping",
+                vk_hash,
                 start_block,
                 end_block
             );
