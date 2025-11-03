@@ -4,6 +4,7 @@ use std::{
 };
 
 use clap::Parser;
+use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
@@ -74,6 +75,9 @@ pub async fn run(args: Args) {
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::debug!("Supported protocol versions: {:?}", supported_versions);
+
     #[cfg(feature = "gpu")]
     let precomputations = {
         tracing::info!("Computing SNARK precomputations");
@@ -113,6 +117,7 @@ pub async fn run(args: Args) {
                 args.circuit_limit,
                 &mut gpu_state,
                 args.fri_path.clone(),
+                &supported_versions,
             )
             .await
             .expect("Failed to run FRI prover");
@@ -146,6 +151,7 @@ pub async fn run(args: Args) {
                 #[cfg(feature = "gpu")]
                 &precomputations,
                 args.disable_zk,
+                &supported_versions,
             )
             .await
             .expect("Failed to run SNARK prover");

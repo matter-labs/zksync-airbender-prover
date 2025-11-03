@@ -1,4 +1,4 @@
-pub mod file_based_proof_client;
+// pub mod file_based_proof_client;
 pub mod sequencer_proof_client;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
@@ -23,12 +23,14 @@ impl fmt::Display for L2BlockNumber {
 #[derive(Debug, Serialize, Deserialize)]
 struct NextFriProverJobPayload {
     block_number: u32,
+    vk_hash: String,
     prover_input: String, // base64-encoded
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubmitFriProofPayload {
     block_number: u64,
+    vk_hash: String,
     proof: String,
 }
 
@@ -36,6 +38,7 @@ struct SubmitFriProofPayload {
 struct GetSnarkProofPayload {
     block_number_from: u64,
     block_number_to: u64,
+    vk_hash: String,
     fri_proofs: Vec<String>, // base64‑encoded FRI proofs
 }
 
@@ -43,6 +46,7 @@ struct GetSnarkProofPayload {
 struct SubmitSnarkProofPayload {
     block_number_from: u64,
     block_number_to: u64,
+    vk_hash: String,
     proof: String, // base64‑encoded SNARK proof
 }
 
@@ -52,6 +56,7 @@ pub struct FailedFriProofPayload {
     pub last_block_timestamp: u64,
     pub expected_hash_u32s: [u32; 8],
     pub proof_final_register_values: [u32; 16],
+    pub vk_hash: String,
     pub proof: String, // base64‑encoded FRI proof
 }
 
@@ -79,6 +84,7 @@ impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
                     .try_into()
                     .expect("block_number_to should fit into L2BlockNumber(u32)"),
             ),
+            vk_hash: self.vk_hash,
             fri_proofs,
         })
     }
@@ -88,18 +94,31 @@ impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
 pub struct SnarkProofInputs {
     pub from_block_number: L2BlockNumber,
     pub to_block_number: L2BlockNumber,
+    pub vk_hash: String,
     pub fri_proofs: Vec<ProgramProof>,
 }
 
 #[async_trait]
 pub trait ProofClient {
-    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
-    async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()>;
-    async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
+    async fn pick_fri_job(
+        &self,
+        compatible_vk_hashes: Vec<String>,
+    ) -> anyhow::Result<Option<(u32, String, Vec<u8>)>>;
+    async fn submit_fri_proof(
+        &self,
+        block_number: u32,
+        vk_hash: String,
+        proof: String,
+    ) -> anyhow::Result<()>;
+    async fn pick_snark_job(
+        &self,
+        compatible_vk_hashes: Vec<String>,
+    ) -> anyhow::Result<Option<SnarkProofInputs>>;
     async fn submit_snark_proof(
         &self,
         from_block_number: L2BlockNumber,
         to_block_number: L2BlockNumber,
+        vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()>;
 }

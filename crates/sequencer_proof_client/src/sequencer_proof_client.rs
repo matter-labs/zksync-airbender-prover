@@ -12,8 +12,11 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
 use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
 use reqwest::StatusCode;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use zkos_wrapper::SnarkWrapperProof;
+
+const SEQUENCER_PROVER_API_PATH: &str = "prover-jobs/v1";
 
 #[derive(Debug)]
 pub struct SequencerProofClient {
@@ -62,16 +65,38 @@ impl SequencerProofClient {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct Stuff {
+    supported_vks: Vec<String>,
+}
+
 #[async_trait]
 impl ProofClient for SequencerProofClient {
     /// Fetch the next block to prove.
     /// Returns `Ok(None)` if there's no block pending (204 No Content).
-    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
-        let url = format!("{}/prover-jobs/FRI/pick", self.url);
+    async fn pick_fri_job(
+        &self,
+        compatible_vk_hashes: Vec<String>,
+    ) -> anyhow::Result<Option<(u32, String, Vec<u8>)>> {
+        let url = format!("{}/{}/FRI/pick", self.url, SEQUENCER_PROVER_API_PATH);
 
         let started_at = Instant::now();
 
-        let resp = self.client.post(&url).send().await?;
+        // let resp = self
+        //     .client
+        //     .post(&url)
+        //     .json(&compatible_vk_hashes)
+        //     .send()
+        //     .await?;
+
+        println!("wot?");
+
+        let s = Stuff {
+            supported_vks: compatible_vk_hashes,
+        };
+        let resp = self.client.post(&url).json(&s);
+        println!("{resp:?}");
+        let resp = resp.send().await?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickFri]
             .observe(started_at.elapsed().as_secs_f64());
@@ -82,19 +107,27 @@ impl ProofClient for SequencerProofClient {
                 let data = STANDARD
                     .decode(&body.prover_input)
                     .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
-                Ok(Some((body.block_number, data)))
+                Ok(Some((body.block_number, body.vk_hash, data)))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            s => Err(anyhow!("Unexpected status {s} when fetching next block")),
+            s => Err(anyhow!(
+                "Unexpected status {s} when fetching next block at address {url}"
+            )),
         }
     }
 
     /// Submit a proof for the processed block
     /// Returns the vector of u32 as returned by the server.
-    async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()> {
-        let url = format!("{}/prover-jobs/FRI/submit", self.url);
+    async fn submit_fri_proof(
+        &self,
+        block_number: u32,
+        vk_hash: String,
+        proof: String,
+    ) -> anyhow::Result<()> {
+        let url = format!("{}/{}/FRI/submit", self.url, SEQUENCER_PROVER_API_PATH);
         let payload = SubmitFriProofPayload {
             block_number: block_number as u64,
+            vk_hash,
             proof,
         };
 
@@ -115,12 +148,27 @@ impl ProofClient for SequencerProofClient {
         }
     }
 
-    async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
-        let url = format!("{}/prover-jobs/SNARK/pick", self.url);
+    async fn pick_snark_job(
+        &self,
+        compatible_vk_hashes: Vec<String>,
+    ) -> anyhow::Result<Option<SnarkProofInputs>> {
+        let url = format!("{}/{}/SNARK/pick", self.url, SEQUENCER_PROVER_API_PATH);
 
         let started_at = Instant::now();
+        let s = Stuff {
+            supported_vks: compatible_vk_hashes,
+        };
+        let resp = self.client.post(&url).json(&s);
+        println!("{resp:?}");
+        let resp = resp.send().await?;
 
-        let resp = self.client.post(&url).send().await?;
+        // let resp = resp.send().await?;
+        // let resp = self
+        //     .client
+        //     .post(&url)
+        //     .json(&compatible_vk_hashes)
+        //     .send()
+        //     .await?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickSnark]
             .observe(started_at.elapsed().as_secs_f64());
@@ -143,9 +191,10 @@ impl ProofClient for SequencerProofClient {
         &self,
         from_block_number: L2BlockNumber,
         to_block_number: L2BlockNumber,
+        vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
-        let url = format!("{}/prover-jobs/SNARK/submit", self.url);
+        let url = format!("{}/{}/SNARK/submit", self.url, SEQUENCER_PROVER_API_PATH);
 
         let started_at = Instant::now();
 
@@ -156,6 +205,7 @@ impl ProofClient for SequencerProofClient {
         let payload = SubmitSnarkProofPayload {
             block_number_from: from_block_number.0 as u64,
             block_number_to: to_block_number.0 as u64,
+            vk_hash,
             proof: serialized_proof,
         };
         self.client
@@ -175,7 +225,10 @@ impl ProofClient for SequencerProofClient {
 impl PeekableProofClient for SequencerProofClient {
     /// Note: you can peek only failed jobs as successful ones are removed.
     async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
-        let url = format!("{}/prover-jobs/FRI/{block_number}/peek", self.url);
+        let url = format!(
+            "{}/{}/FRI/{block_number}/peek",
+            self.url, SEQUENCER_PROVER_API_PATH
+        );
         let resp = self.client.get(&url).send().await?;
         match resp.status() {
             StatusCode::OK => {
@@ -198,8 +251,8 @@ impl PeekableProofClient for SequencerProofClient {
         to_block_number: u32,
     ) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = format!(
-            "{}/prover-jobs/SNARK/{from_block_number}/{to_block_number}/peek",
-            self.url
+            "{}/{}/SNARK/{from_block_number}/{to_block_number}/peek",
+            self.url, SEQUENCER_PROVER_API_PATH
         );
         let resp = self.client.get(&url).send().await?;
         match resp.status() {
@@ -220,7 +273,10 @@ impl PeekableProofClient for SequencerProofClient {
         &self,
         block_number: u32,
     ) -> anyhow::Result<Option<FailedFriProofPayload>> {
-        let url = format!("{}/prover-jobs/FRI/{block_number}/failed", self.url);
+        let url = format!(
+            "{}/{}/FRI/{block_number}/failed",
+            self.url, SEQUENCER_PROVER_API_PATH
+        );
         let resp = self.client.get(&url).send().await?;
         match resp.status() {
             StatusCode::OK => {

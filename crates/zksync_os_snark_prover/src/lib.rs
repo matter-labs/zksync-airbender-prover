@@ -1,5 +1,6 @@
 #[cfg(feature = "gpu")]
 use proof_compression::serialization::PlonkSnarkVerifierCircuitDeviceSetupWrapper;
+use protocol_version::SupportedProtocolVersions;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
@@ -176,6 +177,9 @@ pub async fn run_linking_fri_snark(
 
     let startup_started_at = Instant::now();
 
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::debug!("Supported protocol versions: {:?}", supported_versions);
+
     tracing::info!(
         "Starting zksync_os_snark_prover for {} with request timeout of {}s",
         sequencer_url,
@@ -207,6 +211,7 @@ pub async fn run_linking_fri_snark(
             #[cfg(feature = "gpu")]
             &precomputations,
             disable_zk,
+            &supported_versions,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -232,16 +237,29 @@ pub async fn run_inner<P: ProofClient>(
         SnarkWrapperVK,
     ),
     disable_zk: bool,
+    supported_protocol_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
     tracing::info!("Started picking job");
-    let snark_proof_input = match client.pick_snark_job().await {
+    let snark_proof_input = match client
+        .pick_snark_job(supported_protocol_versions.vk_hashes())
+        .await
+    {
         Ok(Some(snark_proof_input)) => {
             if snark_proof_input.fri_proofs.is_empty() {
                 let err_msg =
                     "No FRI proofs were sent, issue with Prover API/Sequencer, quitting...";
                 tracing::error!(err_msg);
                 return Err(anyhow::anyhow!(err_msg));
+            }
+            if !supported_protocol_versions.contains(&snark_proof_input.vk_hash) {
+                tracing::error!(
+                    "Unsupported protocol version with vk_hash {} for blocks between [{} and {}], skipping",
+                    snark_proof_input.vk_hash,
+                    snark_proof_input.from_block_number.0,
+                    snark_proof_input.to_block_number.0
+                );
+                return Ok(false);
             }
             snark_proof_input
         }
@@ -268,10 +286,13 @@ pub async fn run_inner<P: ProofClient>(
     };
     let start_block = snark_proof_input.from_block_number;
     let end_block = snark_proof_input.to_block_number;
+    let vk_hash = snark_proof_input.vk_hash.clone();
+
     tracing::info!(
-        "Finished picking job, will aggregate from {} to {} inclusive",
+        "Finished picking job, will aggregate from {} to {} inclusive (VK hash: {})",
         start_block,
-        end_block
+        end_block,
+        vk_hash
     );
     tracing::info!("Initializing GPU state");
     #[cfg(feature = "gpu")]
@@ -347,7 +368,7 @@ pub async fn run_inner<P: ProofClient>(
     );
 
     match client
-        .submit_snark_proof(start_block, end_block, snark_proof)
+        .submit_snark_proof(start_block, end_block, vk_hash, snark_proof)
         .await
     {
         Ok(()) => {

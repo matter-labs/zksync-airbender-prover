@@ -11,9 +11,11 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+protocol_version.workspace = true
+zksync_sequencer_proof_client.workspace = true
+
 zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
-zksync_sequencer_proof_client = { path = "../sequencer_proof_client" }
 
 anyhow.workspace = true
 base64.workspace = true

@@ -11,25 +11,19 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-#zksync_prover_job_processor.workspace = true
-zksync_sequencer_proof_client = { path = "../sequencer_proof_client" }
+protocol_version.workspace = true
+zksync_sequencer_proof_client.workspace = true
 
 zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
 zkos_wrapper.workspace = true
-proof-compression = {workspace = true, optional = true}
-
-#zksync_task_management = { path = "../core/lib/task_management" }
-#proof_cache = { path = "../proof_cache" }
-#sequencer_proof_client = { path = "../sequencer_proof_client" }
+proof-compression = { workspace = true, optional = true }
 
 tokio = { workspace = true, features = ["full"] }
 serde_json.workspace = true
-
 serde.workspace = true
 anyhow.workspace = true
 reqwest.workspace = true
-#async-trait = "0.1"
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap.workspace = true

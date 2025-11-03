@@ -6,6 +6,7 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
+use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
@@ -104,6 +105,10 @@ pub async fn run(args: Args) {
     } else {
         ".".to_string()
     };
+
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::debug!("Supported protocol versions: {:?}", supported_versions);
+
     let binary_path = args
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
@@ -132,6 +137,7 @@ pub async fn run(args: Args) {
             args.circuit_limit,
             &mut gpu_state,
             args.path.clone(),
+            &supported_versions,
         )
         .await
         .expect("Failed to run FRI prover");
@@ -155,31 +161,45 @@ pub async fn run_inner<P: ProofClient>(
     #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,
     #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
     path: Option<PathBuf>,
+    supported_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
-    let (block_number, prover_input) = match client.pick_fri_job().await {
-        Err(err) => {
-            // Check if the error is a timeout error
-            if err
-                .downcast_ref::<reqwest::Error>()
-                .map(|e| e.is_timeout())
-                .unwrap_or(false)
-            {
-                tracing::error!("Timeout waiting for response from sequencer: {err}");
-                tracing::error!("Exiting prover due to timeout");
-                FRI_PROVER_METRICS.timeout_errors.inc();
+    let (block_number, vk_hash, prover_input) =
+        match client.pick_fri_job(supported_versions.vk_hashes()).await {
+            Err(err) => {
+                // Check if the error is a timeout error
+                if err
+                    .downcast_ref::<reqwest::Error>()
+                    .map(|e| e.is_timeout())
+                    .unwrap_or(false)
+                {
+                    tracing::error!("Timeout waiting for response from sequencer: {err}");
+                    tracing::error!("Exiting prover due to timeout");
+                    FRI_PROVER_METRICS.timeout_errors.inc();
+                    return Ok(false);
+                }
+                tracing::error!("Error fetching next prover job: {err}");
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 return Ok(false);
             }
-            tracing::error!("Error fetching next prover job: {err}");
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-            return Ok(false);
-        }
-        Ok(Some(next_block)) => next_block,
-        Ok(None) => {
-            tracing::info!("No pending blocks to prove, retrying in 100ms...");
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            return Ok(false);
-        }
-    };
+            Ok(Some(next_block)) => {
+                if !supported_versions.contains(&next_block.1) {
+                    tracing::error!(
+                        "Unsupported protocol version with vk_hash: {} for block number {}",
+                        next_block.1,
+                        next_block.0
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                    return Ok(false);
+                }
+                next_block
+            }
+
+            Ok(None) => {
+                tracing::info!("No pending blocks to prove, retrying in 100ms...");
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                return Ok(false);
+            }
+        };
 
     let started_at = Instant::now();
 
@@ -212,7 +232,10 @@ pub async fn run_inner<P: ProofClient>(
         .time_taken
         .observe(started_at.elapsed().as_secs_f64());
 
-    match client.submit_fri_proof(block_number, proof_b64).await {
+    match client
+        .submit_fri_proof(block_number, vk_hash, proof_b64)
+        .await
+    {
         Ok(_) => tracing::info!(
             "Successfully submitted proof for block number {}",
             block_number
