@@ -1,3 +1,6 @@
+// TODO!: This code base should be moved in a single binary.
+// SNARK & FRI should be libs only and expose no binaries themselves.
+// We'll need slightly more "involved" CLI args, but nothing too complex.
 use std::{
     path::{Path, PathBuf},
     time::Instant,
@@ -76,7 +79,7 @@ pub async fn run(args: Args) {
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     let supported_versions = SupportedProtocolVersions::default();
-    tracing::debug!("Supported protocol versions: {:?}", supported_versions);
+    tracing::info!("Supported protocol versions: {:?}", supported_versions);
 
     #[cfg(feature = "gpu")]
     let precomputations = {

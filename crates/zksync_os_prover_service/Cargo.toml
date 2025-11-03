@@ -13,6 +13,7 @@ categories.workspace = true
 [dependencies]
 protocol_version.workspace = true
 zksync_sequencer_proof_client.workspace = true
+# TODO: fix this, should be done together with moving all code base to a single binary
 zksync_os_fri_prover = { path = "../zksync_os_fri_prover" }
 zksync_os_snark_prover = { path = "../zksync_os_snark_prover" }
 
