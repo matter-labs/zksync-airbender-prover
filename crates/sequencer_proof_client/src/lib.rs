@@ -1,4 +1,6 @@
+// TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
+
 pub mod sequencer_proof_client;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
@@ -58,6 +60,11 @@ pub struct FailedFriProofPayload {
     pub proof_final_register_values: [u32; 16],
     pub vk_hash: String,
     pub proof: String, // base64‑encoded FRI proof
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FetchJobPayload {
+    supported_vks: Vec<String>,
 }
 
 impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {

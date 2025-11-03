@@ -48,6 +48,9 @@ impl Cli {
     }
 }
 
+// TODO!: Maybe we should remove `vk_hash` altogether and simply reuse the supported versions.
+// It would loop through them in order and try to pick a job for each one until one is found (or no more jobs are available).
+// Makes the CLI more ergonomic (and it would include VK chosen in the output anyways).
 #[derive(Subcommand)]
 enum Commands {
     /// Picks the next FRI proof job from the sequencer; sequencer marks job as picked (and will not give it to other clients, until the job expires)
