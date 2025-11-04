@@ -48,16 +48,10 @@ impl Cli {
     }
 }
 
-// TODO!: Maybe we should remove `vk_hash` altogether and simply reuse the supported versions.
-// It would loop through them in order and try to pick a job for each one until one is found (or no more jobs are available).
-// Makes the CLI more ergonomic (and it would include VK chosen in the output anyways).
 #[derive(Subcommand)]
 enum Commands {
     /// Picks the next FRI proof job from the sequencer; sequencer marks job as picked (and will not give it to other clients, until the job expires)
     PickFri {
-        /// VK hash for the proof to be picked
-        #[arg(short, long, value_name = "VK_HASH")]
-        vk_hash: String,
         /// Path to the FRI proof job to save
         #[arg(short, long, value_name = "FRI_PATH", default_value = "./fri_job.json")]
         path: String,
@@ -81,9 +75,6 @@ enum Commands {
     },
     /// Picks the next SNARK proof job from the sequencer; sequencer marks job as picked (and will not give it to other clients, until the job expires)
     PickSnark {
-        /// VK hash for the proof to be picked
-        #[arg(short, long, value_name = "VK_HASH")]
-        vk_hash: String,
         /// Path to the SNARK proof job to save
         #[arg(
             short,
@@ -136,9 +127,9 @@ async fn main() -> Result<()> {
     let url = client.sequencer_url();
 
     match cli.command {
-        Commands::PickFri { vk_hash, path } => {
+        Commands::PickFri { path } => {
             tracing::info!("Picking next FRI proof job from sequencer at {}", url);
-            match client.pick_fri_job(vec![vk_hash]).await? {
+            match client.pick_fri_job().await? {
                 Some((block_number, vk_hash, data)) => {
                     tracing::info!(
                         "Picked FRI job for block {block_number} with vk {vk_hash}, saved job to path {path}"
@@ -167,9 +158,9 @@ async fn main() -> Result<()> {
                 url
             );
         }
-        Commands::PickSnark { vk_hash, path } => {
+        Commands::PickSnark { path } => {
             tracing::info!("Picking next SNARK proof job from sequencer at {}", url);
-            match client.pick_snark_job(vec![vk_hash]).await? {
+            match client.pick_snark_job().await? {
                 Some(snark_proof_inputs) => {
                     tracing::info!(
                         "Received SNARK job for blocks [{}, {}], saving to disk...",

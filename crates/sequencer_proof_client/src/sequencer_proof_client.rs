@@ -2,9 +2,8 @@ use std::time::{Duration, Instant};
 
 use crate::metrics::Method;
 use crate::{
-    FailedFriProofPayload, FetchJobPayload, GetSnarkProofPayload, NextFriProverJobPayload,
-    PeekableProofClient, ProofClient, SnarkProofInputs, SubmitFriProofPayload,
-    SubmitSnarkProofPayload,
+    FailedFriProofPayload, GetSnarkProofPayload, NextFriProverJobPayload, PeekableProofClient,
+    ProofClient, SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 use crate::{L2BlockNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
@@ -18,6 +17,9 @@ use zkos_wrapper::SnarkWrapperProof;
 
 // TODO!: As part of tooling rework, move all usage of `url` from String to URL.
 const SEQUENCER_PROVER_API_PATH: &str = "prover-jobs/v1";
+
+//TODO!: To be refactored into pod name.
+const PROVER_ID: &str = "unknown_prover";
 
 #[derive(Debug)]
 pub struct SequencerProofClient {
@@ -70,18 +72,15 @@ impl SequencerProofClient {
 impl ProofClient for SequencerProofClient {
     /// Fetch the next block to prove.
     /// Returns `Ok(None)` if there's no block pending (204 No Content).
-    async fn pick_fri_job(
-        &self,
-        compatible_vk_hashes: Vec<String>,
-    ) -> anyhow::Result<Option<(u32, String, Vec<u8>)>> {
-        let url = format!("{}/{}/FRI/pick", self.url, SEQUENCER_PROVER_API_PATH);
+    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, String, Vec<u8>)>> {
+        let url = format!(
+            "{}/{}/FRI/pick?id={}",
+            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
+        );
 
         let started_at = Instant::now();
 
-        let payload = FetchJobPayload {
-            supported_vks: compatible_vk_hashes,
-        };
-        let resp = self.client.post(&url).json(&payload).send().await?;
+        let resp = self.client.post(&url).send().await?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickFri]
             .observe(started_at.elapsed().as_secs_f64());
@@ -109,7 +108,10 @@ impl ProofClient for SequencerProofClient {
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()> {
-        let url = format!("{}/{}/FRI/submit", self.url, SEQUENCER_PROVER_API_PATH);
+        let url = format!(
+            "{}/{}/FRI/submit?id={}",
+            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
+        );
         let payload = SubmitFriProofPayload {
             block_number: block_number as u64,
             vk_hash,
@@ -133,18 +135,15 @@ impl ProofClient for SequencerProofClient {
         }
     }
 
-    async fn pick_snark_job(
-        &self,
-        compatible_vk_hashes: Vec<String>,
-    ) -> anyhow::Result<Option<SnarkProofInputs>> {
-        let url = format!("{}/{}/SNARK/pick", self.url, SEQUENCER_PROVER_API_PATH);
+    async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
+        let url = format!(
+            "{}/{}/SNARK/pick?id={}",
+            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
+        );
 
         let started_at = Instant::now();
-        let payload = FetchJobPayload {
-            supported_vks: compatible_vk_hashes,
-        };
 
-        let resp = self.client.post(&url).json(&payload).send().await?;
+        let resp = self.client.post(&url).send().await?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickSnark]
             .observe(started_at.elapsed().as_secs_f64());
@@ -170,7 +169,10 @@ impl ProofClient for SequencerProofClient {
         vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
-        let url = format!("{}/{}/SNARK/submit", self.url, SEQUENCER_PROVER_API_PATH);
+        let url = format!(
+            "{}/{}/SNARK/submit?id={}",
+            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
+        );
 
         let started_at = Instant::now();
 

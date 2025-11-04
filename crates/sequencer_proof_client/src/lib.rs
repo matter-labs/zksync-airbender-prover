@@ -62,11 +62,6 @@ pub struct FailedFriProofPayload {
     pub proof: String, // base64‑encoded FRI proof
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct FetchJobPayload {
-    supported_vks: Vec<String>,
-}
-
 impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
     type Error = anyhow::Error;
 
@@ -107,20 +102,14 @@ pub struct SnarkProofInputs {
 
 #[async_trait]
 pub trait ProofClient {
-    async fn pick_fri_job(
-        &self,
-        compatible_vk_hashes: Vec<String>,
-    ) -> anyhow::Result<Option<(u32, String, Vec<u8>)>>;
+    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, String, Vec<u8>)>>;
     async fn submit_fri_proof(
         &self,
         block_number: u32,
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()>;
-    async fn pick_snark_job(
-        &self,
-        compatible_vk_hashes: Vec<String>,
-    ) -> anyhow::Result<Option<SnarkProofInputs>>;
+    async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
     async fn submit_snark_proof(
         &self,
         from_block_number: L2BlockNumber,

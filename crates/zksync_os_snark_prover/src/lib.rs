@@ -241,10 +241,7 @@ pub async fn run_inner<P: ProofClient>(
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
     tracing::info!("Started picking job");
-    let snark_proof_input = match client
-        .pick_snark_job(supported_protocol_versions.vk_hashes())
-        .await
-    {
+    let snark_proof_input = match client.pick_snark_job().await {
         Ok(Some(snark_proof_input)) => {
             if snark_proof_input.fri_proofs.is_empty() {
                 let err_msg =

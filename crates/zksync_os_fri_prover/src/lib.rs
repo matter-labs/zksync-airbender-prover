@@ -165,43 +165,42 @@ pub async fn run_inner<P: ProofClient>(
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
-    let (block_number, vk_hash, prover_input) =
-        match client.pick_fri_job(supported_versions.vk_hashes()).await {
-            Err(err) => {
-                // Check if the error is a timeout error
-                if err
-                    .downcast_ref::<reqwest::Error>()
-                    .map(|e| e.is_timeout())
-                    .unwrap_or(false)
-                {
-                    tracing::error!("Timeout waiting for response from sequencer: {err}");
-                    tracing::error!("Exiting prover due to timeout");
-                    FRI_PROVER_METRICS.timeout_errors.inc();
-                    return Ok(false);
-                }
-                tracing::error!("Error fetching next prover job: {err}");
+    let (block_number, vk_hash, prover_input) = match client.pick_fri_job().await {
+        Err(err) => {
+            // Check if the error is a timeout error
+            if err
+                .downcast_ref::<reqwest::Error>()
+                .map(|e| e.is_timeout())
+                .unwrap_or(false)
+            {
+                tracing::error!("Timeout waiting for response from sequencer: {err}");
+                tracing::error!("Exiting prover due to timeout");
+                FRI_PROVER_METRICS.timeout_errors.inc();
+                return Ok(false);
+            }
+            tracing::error!("Error fetching next prover job: {err}");
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            return Ok(false);
+        }
+        Ok(Some(next_block)) => {
+            if !supported_versions.contains(&next_block.1) {
+                tracing::error!(
+                    "Unsupported protocol version with vk_hash: {} for block number {}",
+                    next_block.1,
+                    next_block.0
+                );
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 return Ok(false);
             }
-            Ok(Some(next_block)) => {
-                if !supported_versions.contains(&next_block.1) {
-                    tracing::error!(
-                        "Unsupported protocol version with vk_hash: {} for block number {}",
-                        next_block.1,
-                        next_block.0
-                    );
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                    return Ok(false);
-                }
-                next_block
-            }
+            next_block
+        }
 
-            Ok(None) => {
-                tracing::info!("No pending blocks to prove, retrying in 100ms...");
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                return Ok(false);
-            }
-        };
+        Ok(None) => {
+            tracing::info!("No pending blocks to prove, retrying in 100ms...");
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            return Ok(false);
+        }
+    };
 
     let started_at = Instant::now();
 
@@ -224,6 +223,9 @@ pub async fn run_inner<P: ProofClient>(
         block_number,
         vk_hash
     );
+
+    serialize_to_file(&proof, Path::new("fri_proof.json"));
+
     let proof_bytes: Vec<u8> = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
         .expect("failed to bincode-serialize proof");
 
