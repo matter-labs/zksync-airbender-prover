@@ -64,6 +64,10 @@ impl SequencerProofClient {
 
 #[async_trait]
 impl ProofClient for SequencerProofClient {
+    fn sequencer_url(&self) -> &str {
+        &self.url
+    }
+
     /// Fetch the next block to prove.
     /// Returns `Ok(None)` if there's no block pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {

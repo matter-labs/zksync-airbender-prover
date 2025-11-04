@@ -39,8 +39,10 @@ enum Commands {
     },
 
     RunProver {
-        #[arg(short, long)]
-        sequencer_url: Option<String>,
+        /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
+        /// The prover will poll sequencers in round-robin fashion
+        #[arg(short, long, value_delimiter = ',')]
+        sequencer_urls: Option<Vec<String>>,
         #[clap(flatten)]
         setup: SetupOptions,
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
@@ -78,7 +80,7 @@ fn main() {
             vk_verification_key_file,
         ),
         Commands::RunProver {
-            sequencer_url,
+            sequencer_urls,
             setup:
                 SetupOptions {
                     binary_path,
@@ -110,7 +112,7 @@ fn main() {
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
-                        sequencer_url,
+                        sequencer_urls,
                         output_dir,
                         trusted_setup_file,
                         iterations,

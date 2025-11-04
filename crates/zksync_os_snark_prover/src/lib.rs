@@ -162,25 +162,38 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
 
 pub async fn run_linking_fri_snark(
     _binary_path: String,
-    sequencer_url: Option<String>,
+    sequencer_urls: Option<Vec<String>>,
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
     request_timeout_secs: u64,
     disable_zk: bool,
 ) -> anyhow::Result<()> {
-    let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
+    let sequencer_urls = sequencer_urls
+        .unwrap_or(vec!["http://localhost:3124".to_string()]);
     let timeout = Duration::from_secs(request_timeout_secs);
-    let sequencer_client =
-        SequencerProofClient::new_with_timeout(sequencer_url.clone(), Some(timeout));
+
+    // Create clients for all sequencers
+    let clients: Vec<SequencerProofClient> = sequencer_urls
+        .iter()
+        .map(|url| SequencerProofClient::new_with_timeout(url.clone(), Some(timeout)))
+        .collect();
+
+    if clients.is_empty() {
+        tracing::error!("No sequencer URLs provided");
+        return Ok(());
+    }
 
     let startup_started_at = Instant::now();
 
     tracing::info!(
-        "Starting zksync_os_snark_prover for {} with request timeout of {}s",
-        sequencer_url,
+        "Starting zksync_os_snark_prover for {} sequencer(s) with request timeout of {}s",
+        clients.len(),
         request_timeout_secs
     );
+    clients.iter().for_each(|client| {
+        tracing::info!("  - {}", client.sequencer_url());
+    });
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     #[cfg(feature = "gpu")]
@@ -199,25 +212,41 @@ pub async fn run_linking_fri_snark(
     let mut proof_count = 0;
 
     loop {
-        let proof_generated = run_inner(
-            &sequencer_client,
-            &verifier_binary,
-            output_dir.clone(),
-            trusted_setup_file.clone(),
-            #[cfg(feature = "gpu")]
-            &precomputations,
-            disable_zk,
-        )
-        .await
-        .expect("Failed to run SNARK prover");
+        let mut any_task_found = false;
 
-        proof_count += proof_generated as usize;
+        // Poll all sequencers in round-robin fashion
+        for client in &clients {
+            tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
-        if let Some(max_proofs_generated) = iterations {
-            if proof_count >= max_proofs_generated {
-                tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...");
-                return Ok(());
+            let proof_generated = run_inner(
+                client,
+                &verifier_binary,
+                output_dir.clone(),
+                trusted_setup_file.clone(),
+                #[cfg(feature = "gpu")]
+                &precomputations,
+                disable_zk,
+            )
+            .await
+            .expect("Failed to run SNARK prover");
+
+            if proof_generated {
+                any_task_found = true;
+                proof_count += 1;
+
+                if let Some(max_proofs_generated) = iterations {
+                    if proof_count >= max_proofs_generated {
+                        tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...");
+                        return Ok(());
+                    }
+                }
             }
+        }
+
+        // If no tasks were found across all sequencers, wait before trying again
+        if !any_task_found {
+            tracing::info!("No pending SNARK jobs from any sequencer, retrying in 5s...");
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     }
 }
@@ -234,7 +263,7 @@ pub async fn run_inner<P: ProofClient>(
     disable_zk: bool,
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
-    tracing::info!("Started picking job");
+    tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
     let snark_proof_input = match client.pick_snark_job().await {
         Ok(Some(snark_proof_input)) => {
             if snark_proof_input.fri_proofs.is_empty() {
@@ -246,8 +275,7 @@ pub async fn run_inner<P: ProofClient>(
             snark_proof_input
         }
         Ok(None) => {
-            tracing::info!("No SNARK jobs found, retrying in 5s");
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tracing::debug!("No SNARK jobs found from {}, trying next sequencer...", client.sequencer_url());
             return Ok(false);
         }
         Err(e) => {
@@ -256,20 +284,20 @@ pub async fn run_inner<P: ProofClient>(
                 .map(|err| err.is_timeout())
                 .unwrap_or(false)
             {
-                tracing::error!("Timeout waiting for response from sequencer: {e:?}");
+                tracing::error!("Timeout waiting for response from sequencer {}: {e:?}", client.sequencer_url());
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
                 return Ok(false);
             }
-            tracing::info!("Failed to pick SNARK job due to {e:?}, retrying in 30s");
-            tokio::time::sleep(Duration::from_secs(30)).await;
+            tracing::error!("Failed to pick SNARK job from {}: {e:?}", client.sequencer_url());
             return Ok(false);
         }
     };
     let start_block = snark_proof_input.from_block_number;
     let end_block = snark_proof_input.to_block_number;
     tracing::info!(
-        "Finished picking job, will aggregate from {} to {} inclusive",
+        "Picked job from sequencer {}, will aggregate from {} to {} inclusive",
+        client.sequencer_url(),
         start_block,
         end_block
     );
@@ -352,9 +380,10 @@ pub async fn run_inner<P: ProofClient>(
     {
         Ok(()) => {
             tracing::info!(
-                "Successfully submitted SNARK proof for blocks {} to {}",
+                "Successfully submitted SNARK proof for blocks {} to {} to sequencer {}",
                 start_block,
-                end_block
+                end_block,
+                client.sequencer_url()
             );
 
             SNARK_PROVER_METRICS
@@ -368,15 +397,17 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting SNARK proof for blocks {} to {}: {e:?}",
+                    "Timeout submitting SNARK proof for blocks {} to {} to sequencer {}: {e:?}",
                     start_block,
-                    end_block
+                    end_block,
+                    client.sequencer_url()
                 );
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit SNARK job, blocks {} to {} due to {e:?}, skipping",
+                "Failed to submit SNARK job to sequencer {}, blocks {} to {} due to {e:?}, skipping",
+                client.sequencer_url(),
                 start_block,
                 end_block
             );

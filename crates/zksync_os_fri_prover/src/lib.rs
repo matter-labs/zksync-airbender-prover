@@ -24,9 +24,15 @@ pub mod metrics;
 #[command(version = "1.0")]
 #[command(about = "Prover for Zksync OS", long_about = None)]
 pub struct Args {
-    /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
-    #[arg(short, long, default_value = "http://localhost:3124")]
-    pub base_url: String,
+    /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
+    /// The prover will poll sequencers in round-robin fashion
+    #[arg(
+        short,
+        long,
+        value_delimiter = ',',
+        default_value = "http://localhost:3124"
+    )]
+    pub sequencer_urls: Vec<String>,
     /// Enable logging and use the logging-enabled binary
     /// This is not used in the FRI prover, but is kept for backward compatibility.
     #[arg(long)]
@@ -97,7 +103,18 @@ pub async fn run(args: Args) {
     use std::time::Duration;
 
     let timeout = Duration::from_secs(args.request_timeout_secs);
-    let client = SequencerProofClient::new_with_timeout(args.base_url, Some(timeout));
+
+    // Create clients for all sequencers
+    let clients: Vec<SequencerProofClient> = args
+        .sequencer_urls
+        .iter()
+        .map(|url| SequencerProofClient::new_with_timeout(url.clone(), Some(timeout)))
+        .collect();
+
+    if clients.is_empty() {
+        tracing::error!("No sequencer URLs provided");
+        return;
+    }
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -118,32 +135,53 @@ pub async fn run(args: Args) {
     let mut gpu_state = GpuSharedState::new(&binary);
 
     tracing::info!(
-        "Starting Zksync OS FRI prover for {} with request timeout of {}s",
-        client.sequencer_url(),
+        "Starting Zksync OS FRI prover for {} sequencer(s) with request timeout of {}s",
+        clients.len(),
         args.request_timeout_secs
     );
+    clients.iter().for_each(|client| {
+        tracing::info!("  - {}", client.sequencer_url());
+    });
 
     let mut proof_count = 0;
 
     loop {
-        let proof_generated = run_inner(
-            &client,
-            &binary,
-            args.circuit_limit,
-            &mut gpu_state,
-            args.path.clone(),
-        )
-        .await
-        .expect("Failed to run FRI prover");
+        let mut any_task_found = false;
 
-        proof_count += proof_generated as usize;
+        // Poll all sequencers in round-robin fashion
+        for client in &clients {
+            tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
-        // Check if we've reached the iteration limit
-        if let Some(max_proofs_generated) = args.iterations {
-            if proof_count >= max_proofs_generated {
-                tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...",);
-                break;
+            let proof_generated = run_inner(
+                client,
+                &binary,
+                args.circuit_limit,
+                &mut gpu_state,
+                args.path.clone(),
+            )
+            .await
+            .expect("Failed to run FRI prover");
+
+            if proof_generated {
+                any_task_found = true;
+                proof_count += 1;
+
+                // Check if we've reached the iteration limit
+                if let Some(max_proofs_generated) = args.iterations {
+                    if proof_count >= max_proofs_generated {
+                        tracing::info!(
+                            "Reached maximum iterations ({max_proofs_generated}), exiting...",
+                        );
+                        return;
+                    }
+                }
             }
+        }
+
+        // If no tasks were found across all sequencers, wait before trying again
+        if !any_task_found {
+            tracing::info!("No pending blocks to prove from any sequencer, retrying in 100ms...");
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
 }
@@ -164,19 +202,26 @@ pub async fn run_inner<P: ProofClient>(
                 .map(|e| e.is_timeout())
                 .unwrap_or(false)
             {
-                tracing::error!("Timeout waiting for response from sequencer: {err}");
+                tracing::error!(
+                    "Timeout waiting for response from sequencer {}: {err}",
+                    client.sequencer_url()
+                );
                 tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
                 return Ok(false);
             }
-            tracing::error!("Error fetching next prover job: {err}");
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            tracing::error!(
+                "Error fetching next prover job from {}: {err}",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
         Ok(Some(next_block)) => next_block,
         Ok(None) => {
-            tracing::info!("No pending blocks to prove, retrying in 100ms...");
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tracing::debug!(
+                "No pending blocks to prove from {}, trying next sequencer...",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
     };
@@ -189,7 +234,11 @@ pub async fn run_inner<P: ProofClient>(
         .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
         .collect();
 
-    tracing::info!("Starting proving block number {}", block_number);
+    tracing::info!(
+        "Starting proving block number {} from sequencer {}",
+        block_number,
+        client.sequencer_url()
+    );
 
     let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
 
@@ -214,8 +263,9 @@ pub async fn run_inner<P: ProofClient>(
 
     match client.submit_fri_proof(block_number, proof_b64).await {
         Ok(_) => tracing::info!(
-            "Successfully submitted proof for block number {}",
-            block_number
+            "Successfully submitted proof for block number {} to sequencer {}",
+            block_number,
+            client.sequencer_url()
         ),
         Err(err) => {
             // Check if the error is a timeout error
@@ -225,16 +275,18 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting proof for block number {}: {}",
+                    "Timeout submitting proof for block number {} to sequencer {}: {}",
                     block_number,
+                    client.sequencer_url(),
                     err
                 );
                 tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit proof for block number {}: {}",
+                "Failed to submit proof for block number {} to sequencer {}: {}",
                 block_number,
+                client.sequencer_url(),
                 err
             );
         }

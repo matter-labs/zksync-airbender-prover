@@ -93,6 +93,8 @@ pub struct SnarkProofInputs {
 
 #[async_trait]
 pub trait ProofClient {
+    /// Returns the sequencer URL for logging purposes
+    fn sequencer_url(&self) -> &str;
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
     async fn submit_fri_proof(&self, block_number: u32, proof: String) -> anyhow::Result<()>;
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
