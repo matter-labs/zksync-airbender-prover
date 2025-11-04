@@ -169,8 +169,7 @@ pub async fn run_linking_fri_snark(
     request_timeout_secs: u64,
     disable_zk: bool,
 ) -> anyhow::Result<()> {
-    let sequencer_urls = sequencer_urls
-        .unwrap_or(vec!["http://localhost:3124".to_string()]);
+    let sequencer_urls = sequencer_urls.unwrap_or(vec!["http://localhost:3124".to_string()]);
     let timeout = Duration::from_secs(request_timeout_secs);
 
     // Create clients for all sequencers
@@ -236,7 +235,9 @@ pub async fn run_linking_fri_snark(
 
                 if let Some(max_proofs_generated) = iterations {
                     if proof_count >= max_proofs_generated {
-                        tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...");
+                        tracing::info!(
+                            "Reached maximum iterations ({max_proofs_generated}), exiting..."
+                        );
                         return Ok(());
                     }
                 }
@@ -275,7 +276,10 @@ pub async fn run_inner<P: ProofClient>(
             snark_proof_input
         }
         Ok(None) => {
-            tracing::debug!("No SNARK jobs found from {}, trying next sequencer...", client.sequencer_url());
+            tracing::debug!(
+                "No SNARK jobs found from {}, trying next sequencer...",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
         Err(e) => {
@@ -284,12 +288,18 @@ pub async fn run_inner<P: ProofClient>(
                 .map(|err| err.is_timeout())
                 .unwrap_or(false)
             {
-                tracing::error!("Timeout waiting for response from sequencer {}: {e:?}", client.sequencer_url());
+                tracing::error!(
+                    "Timeout waiting for response from sequencer {}: {e:?}",
+                    client.sequencer_url()
+                );
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
                 return Ok(false);
             }
-            tracing::error!("Failed to pick SNARK job from {}: {e:?}", client.sequencer_url());
+            tracing::error!(
+                "Failed to pick SNARK job from {}: {e:?}",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
     };
