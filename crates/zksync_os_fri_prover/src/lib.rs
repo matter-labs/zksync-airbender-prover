@@ -114,11 +114,6 @@ pub async fn run(args: Args) {
         .map(|url| SequencerProofClient::new_with_timeout(url.clone(), Some(timeout)))
         .collect();
 
-    if clients.is_empty() {
-        tracing::error!("No sequencer URLs provided");
-        return;
-    }
-
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
     } else {
@@ -244,7 +239,7 @@ pub async fn run_inner<P: ProofClient>(
 
         Ok(None) => {
             tracing::debug!(
-                "No pending batches to prove from sequencer {}, trying next sequencer...",
+                "No pending batches to prove from sequencer {}",
                 client.sequencer_url()
             );
             return Ok(false);

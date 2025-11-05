@@ -179,11 +179,6 @@ pub async fn run_linking_fri_snark(
         .map(|url| SequencerProofClient::new_with_timeout(url.clone(), Some(timeout)))
         .collect();
 
-    if clients.is_empty() {
-        tracing::error!("No sequencer URLs provided");
-        return Ok(());
-    }
-
     let startup_started_at = Instant::now();
 
     let supported_versions = SupportedProtocolVersions::default();
@@ -292,7 +287,7 @@ pub async fn run_inner<P: ProofClient>(
         }
         Ok(None) => {
             tracing::debug!(
-                "No SNARK jobs found from {}, trying next sequencer...",
+                "No SNARK jobs found from sequencer {}",
                 client.sequencer_url()
             );
             return Ok(false);
