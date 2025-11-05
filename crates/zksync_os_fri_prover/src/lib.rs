@@ -6,13 +6,16 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
+use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
+use zksync_sequencer_proof_client::{
+    sequencer_proof_client::SequencerProofClient, FriJobInputs, ProofClient,
+};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -34,7 +37,7 @@ pub struct Args {
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
-    /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
+    /// Circuit limit - max number of MainVM circuits to instantiate to run the batch fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
     /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
@@ -104,6 +107,10 @@ pub async fn run(args: Args) {
     } else {
         ".".to_string()
     };
+
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::info!("{:#?}", supported_versions);
+
     let binary_path = args
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
@@ -132,11 +139,14 @@ pub async fn run(args: Args) {
             args.circuit_limit,
             &mut gpu_state,
             args.path.clone(),
+            &supported_versions,
         )
         .await
         .expect("Failed to run FRI prover");
 
-        proof_count += proof_generated as usize;
+        if proof_generated {
+            proof_count += 1;
+        }
 
         // Check if we've reached the iteration limit
         if let Some(max_proofs_generated) = args.iterations {
@@ -155,8 +165,13 @@ pub async fn run_inner<P: ProofClient>(
     #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,
     #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
     path: Option<PathBuf>,
+    supported_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
-    let (block_number, prover_input) = match client.pick_fri_job().await {
+    let FriJobInputs {
+        batch_number,
+        vk_hash,
+        prover_input,
+    } = match client.pick_fri_job().await {
         Err(err) => {
             // Check if the error is a timeout error
             if err
@@ -173,9 +188,21 @@ pub async fn run_inner<P: ProofClient>(
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
             return Ok(false);
         }
-        Ok(Some(next_block)) => next_block,
+        Ok(Some(fri_job_input)) => {
+            if !supported_versions.contains(&fri_job_input.vk_hash) {
+                tracing::error!(
+                    "Unsupported protocol version with vk_hash: {} for batch number {}",
+                    fri_job_input.vk_hash,
+                    fri_job_input.batch_number
+                );
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                return Ok(false);
+            }
+            fri_job_input
+        }
+
         Ok(None) => {
-            tracing::info!("No pending blocks to prove, retrying in 100ms...");
+            tracing::info!("No pending batches to prove, retrying in 100ms...");
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             return Ok(false);
         }
@@ -189,11 +216,22 @@ pub async fn run_inner<P: ProofClient>(
         .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
         .collect();
 
-    tracing::info!("Starting proving block number {}", block_number);
+    tracing::info!(
+        "Starting proving batch number {} with vk hash {}",
+        batch_number,
+        vk_hash
+    );
 
     let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
 
-    tracing::info!("Finished proving block number {}", block_number);
+    tracing::info!(
+        "Finished proving batch number {} with vk hash {}",
+        batch_number,
+        vk_hash
+    );
+
+    serialize_to_file(&proof, Path::new("fri_proof.json"));
+
     let proof_bytes: Vec<u8> = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
         .expect("failed to bincode-serialize proof");
 
@@ -205,17 +243,21 @@ pub async fn run_inner<P: ProofClient>(
     }
 
     FRI_PROVER_METRICS
-        .latest_proven_block
-        .set(block_number as i64);
+        .latest_proven_batch
+        .set(batch_number as i64);
 
     FRI_PROVER_METRICS
         .time_taken
         .observe(started_at.elapsed().as_secs_f64());
 
-    match client.submit_fri_proof(block_number, proof_b64).await {
+    match client
+        .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
+        .await
+    {
         Ok(_) => tracing::info!(
-            "Successfully submitted proof for block number {}",
-            block_number
+            "Successfully submitted proof for batch number {} with vk hash {}",
+            batch_number,
+            vk_hash
         ),
         Err(err) => {
             // Check if the error is a timeout error
@@ -225,16 +267,18 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting proof for block number {}: {}",
-                    block_number,
+                    "Timeout submitting proof for batch number {} with vk hash {}: {}",
+                    batch_number,
+                    vk_hash,
                     err
                 );
                 tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit proof for block number {}: {}",
-                block_number,
+                "Failed to submit proof for batch number {} with vk hash {}: {}",
+                batch_number,
+                vk_hash,
                 err
             );
         }
