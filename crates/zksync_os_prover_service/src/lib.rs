@@ -79,7 +79,7 @@ pub async fn run(args: Args) {
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     let supported_versions = SupportedProtocolVersions::default();
-    tracing::info!("Supported protocol versions: {:?}", supported_versions);
+    tracing::info!("{:#?}", supported_versions);
 
     #[cfg(feature = "gpu")]
     let precomputations = {

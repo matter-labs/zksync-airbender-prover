@@ -1,6 +1,9 @@
-use std::fmt::{self, Debug};
+// NOTE: Usage of allow(dead_code) is intentional here, as fields are used in the Debug macro,
+// but the compiler doesn't seem to be able to infer it directly.
 
 /// Represents a specific protocol version supported by the prover, from prover's perspective.
+#[derive(Debug)]
+#[allow(dead_code)]
 struct ProtocolVersion {
     /// verification key hash identifying this protocol version
     vk_hash: VerificationKeyHash,
@@ -19,10 +22,19 @@ struct ProtocolVersion {
     bin_md5sum: BinMd5Sum,
 }
 
+#[derive(Debug)]
 struct VerificationKeyHash(&'static str);
+#[derive(Debug)]
+#[allow(dead_code)]
 struct AirbenderVersion(&'static str);
+#[derive(Debug)]
+#[allow(dead_code)]
 struct ZkSyncOSVersion(&'static str);
+#[derive(Debug)]
+#[allow(dead_code)]
 struct ZkOsWrapperVersion(&'static str);
+#[derive(Debug)]
+#[allow(dead_code)]
 struct BinMd5Sum(&'static str);
 
 /// Corresponds to server's execution_version 3 (or v1.1)
@@ -37,6 +49,7 @@ const V3: ProtocolVersion = ProtocolVersion {
 };
 
 /// Represents the set of supported protocol versions by this prover implementation.
+#[derive(Debug)]
 pub struct SupportedProtocolVersions {
     versions: Vec<ProtocolVersion>,
 }
@@ -44,21 +57,6 @@ pub struct SupportedProtocolVersions {
 impl Default for SupportedProtocolVersions {
     fn default() -> Self {
         Self { versions: vec![V3] }
-    }
-}
-
-impl Debug for SupportedProtocolVersions {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "SupportedProtocolVersions {{")?;
-        for version in &self.versions {
-            writeln!(f, "  vk_hash: {}", version.vk_hash.0)?;
-            writeln!(f, "  airbender_version: {}", version.airbender_version.0)?;
-            writeln!(f, "  zksync_os_version: {}", version.zksync_os_version.0)?;
-            writeln!(f, "  zkos_wrapper: {}", version.zkos_wrapper.0)?;
-            writeln!(f, "  bin_md5sum: {}", version.bin_md5sum.0)?;
-            writeln!(f)?;
-        }
-        write!(f, "}}")
     }
 }
 

@@ -107,7 +107,7 @@ pub async fn run(args: Args) {
     };
 
     let supported_versions = SupportedProtocolVersions::default();
-    tracing::info!("Supported protocol versions: {:?}", supported_versions);
+    tracing::info!("{:#?}", supported_versions);
 
     let binary_path = args
         .app_bin_path

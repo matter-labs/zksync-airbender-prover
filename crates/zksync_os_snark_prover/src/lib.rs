@@ -178,7 +178,7 @@ pub async fn run_linking_fri_snark(
     let startup_started_at = Instant::now();
 
     let supported_versions = SupportedProtocolVersions::default();
-    tracing::info!("Supported protocol versions: {:?}", supported_versions);
+    tracing::info!("{:#?}", supported_versions);
 
     tracing::info!(
         "Starting zksync_os_snark_prover for {} with request timeout of {}s",
