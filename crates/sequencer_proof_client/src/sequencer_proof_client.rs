@@ -5,7 +5,7 @@ use crate::{
     FailedFriProofPayload, GetSnarkProofPayload, NextFriProverJobPayload, PeekableProofClient,
     ProofClient, SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
-use crate::{L2BlockNumber, SEQUENCER_CLIENT_METRICS};
+use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -70,8 +70,8 @@ impl SequencerProofClient {
 
 #[async_trait]
 impl ProofClient for SequencerProofClient {
-    /// Fetch the next block to prove.
-    /// Returns `Ok(None)` if there's no block pending (204 No Content).
+    /// Fetch the next batch to prove.
+    /// Returns `Ok(None)` if there's no batch pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, String, Vec<u8>)>> {
         let url = format!(
             "{}/{}/FRI/pick?id={}",
@@ -90,21 +90,21 @@ impl ProofClient for SequencerProofClient {
                 let body: NextFriProverJobPayload = resp.json().await?;
                 let data = STANDARD
                     .decode(&body.prover_input)
-                    .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
-                Ok(Some((body.block_number, body.vk_hash, data)))
+                    .map_err(|e| anyhow!("Failed to decode batch data: {e}"))?;
+                Ok(Some((body.batch_number, body.vk_hash, data)))
             }
             StatusCode::NO_CONTENT => Ok(None),
             s => Err(anyhow!(
-                "Unexpected status {s} when fetching next block at address {url}"
+                "Unexpected status {s} when fetching next batch at address {url}"
             )),
         }
     }
 
-    /// Submit a proof for the processed block
+    /// Submit a proof for the processed batch
     /// Returns the vector of u32 as returned by the server.
     async fn submit_fri_proof(
         &self,
-        block_number: u32,
+        batch_number: u32,
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()> {
@@ -113,7 +113,7 @@ impl ProofClient for SequencerProofClient {
             self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
         );
         let payload = SubmitFriProofPayload {
-            block_number: block_number as u64,
+            batch_number: batch_number as u64,
             vk_hash,
             proof,
         };
@@ -164,8 +164,8 @@ impl ProofClient for SequencerProofClient {
 
     async fn submit_snark_proof(
         &self,
-        from_block_number: L2BlockNumber,
-        to_block_number: L2BlockNumber,
+        from_batch_number: L2BatchNumber,
+        to_batch_number: L2BatchNumber,
         vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
@@ -181,8 +181,8 @@ impl ProofClient for SequencerProofClient {
             .context("Failed to serialize SNARK proof")?;
 
         let payload = SubmitSnarkProofPayload {
-            block_number_from: from_block_number.0 as u64,
-            block_number_to: to_block_number.0 as u64,
+            from_batch_number: from_batch_number.0 as u64,
+            to_batch_number: to_batch_number.0 as u64,
             vk_hash,
             proof: serialized_proof,
         };
@@ -202,9 +202,9 @@ impl ProofClient for SequencerProofClient {
 #[async_trait]
 impl PeekableProofClient for SequencerProofClient {
     /// Note: you can peek only failed jobs as successful ones are removed.
-    async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
+    async fn peek_fri_job(&self, batch_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let url = format!(
-            "{}/{}/FRI/{block_number}/peek",
+            "{}/{}/FRI/{batch_number}/peek",
             self.url, SEQUENCER_PROVER_API_PATH
         );
         let resp = self.client.get(&url).send().await?;
@@ -213,23 +213,23 @@ impl PeekableProofClient for SequencerProofClient {
                 let body: NextFriProverJobPayload = resp.json().await?;
                 let data = STANDARD
                     .decode(&body.prover_input)
-                    .map_err(|e| anyhow!("Failed to decode block data: {e}"))?;
-                Ok(Some((body.block_number, data)))
+                    .map_err(|e| anyhow!("Failed to decode batch data: {e}"))?;
+                Ok(Some((body.batch_number, data)))
             }
             StatusCode::NO_CONTENT => Ok(None),
             _ => Err(anyhow!(
-                "Unexpected status {resp:?} when peeking the block {block_number}"
+                "Unexpected status {resp:?} when peeking the batch {batch_number}"
             )),
         }
     }
 
     async fn peek_snark_job(
         &self,
-        from_block_number: u32,
-        to_block_number: u32,
+        from_batch_number: u32,
+        to_batch_number: u32,
     ) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = format!(
-            "{}/{}/SNARK/{from_block_number}/{to_block_number}/peek",
+            "{}/{}/SNARK/{from_batch_number}/{to_batch_number}/peek",
             self.url, SEQUENCER_PROVER_API_PATH
         );
         let resp = self.client.get(&url).send().await?;
@@ -243,16 +243,16 @@ impl PeekableProofClient for SequencerProofClient {
                 ))
             }
             StatusCode::NO_CONTENT => Ok(None),
-            _ => Err(anyhow!("Unexpected status {resp:?} when peeking FRI proofs from {from_block_number} to {to_block_number}")),
+            _ => Err(anyhow!("Unexpected status {resp:?} when peeking FRI proofs from {from_batch_number} to {to_batch_number}")),
         }
     }
 
     async fn get_failed_fri_proof(
         &self,
-        block_number: u32,
+        batch_number: u32,
     ) -> anyhow::Result<Option<FailedFriProofPayload>> {
         let url = format!(
-            "{}/{}/FRI/{block_number}/failed",
+            "{}/{}/FRI/{batch_number}/failed",
             self.url, SEQUENCER_PROVER_API_PATH
         );
         let resp = self.client.get(&url).send().await?;
@@ -263,7 +263,7 @@ impl PeekableProofClient for SequencerProofClient {
             }
             StatusCode::NO_CONTENT => Ok(None),
             _ => Err(anyhow!(
-                "Unexpected status {resp:?} when peeking failed FRI proof for block {block_number}"
+                "Unexpected status {resp:?} when peeking failed FRI proof for batch {batch_number}"
             )),
         }
     }

@@ -39,7 +39,7 @@ pub struct Args {
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
-    /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
+    /// Circuit limit - max number of MainVM circuits to instantiate to run the batch fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
     /// Directory to store the output files for SNARK prover

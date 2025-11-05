@@ -14,9 +14,9 @@ use zksync_airbender_execution_utils::ProgramProof;
 mod metrics;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
-pub struct L2BlockNumber(pub u32);
+pub struct L2BatchNumber(pub u32);
 
-impl fmt::Display for L2BlockNumber {
+impl fmt::Display for L2BatchNumber {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -24,30 +24,30 @@ impl fmt::Display for L2BlockNumber {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct NextFriProverJobPayload {
-    block_number: u32,
+    batch_number: u32,
     vk_hash: String,
     prover_input: String, // base64-encoded
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubmitFriProofPayload {
-    block_number: u64,
+    batch_number: u64,
     vk_hash: String,
     proof: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GetSnarkProofPayload {
-    block_number_from: u64,
-    block_number_to: u64,
+    from_batch_number: u64,
+    to_batch_number: u64,
     vk_hash: String,
     fri_proofs: Vec<String>, // base64‑encoded FRI proofs
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubmitSnarkProofPayload {
-    block_number_from: u64,
-    block_number_to: u64,
+    from_batch_number: u64,
+    to_batch_number: u64,
     vk_hash: String,
     proof: String, // base64‑encoded SNARK proof
 }
@@ -76,15 +76,15 @@ impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
         }
 
         Ok(SnarkProofInputs {
-            from_block_number: L2BlockNumber(
-                self.block_number_from
+            from_batch_number: L2BatchNumber(
+                self.from_batch_number
                     .try_into()
-                    .expect("block_number_from should fit into L2BlockNumber(u32)"),
+                    .expect("from_batch_number should fit into L2BatchNumber(u32)"),
             ),
-            to_block_number: L2BlockNumber(
-                self.block_number_to
+            to_batch_number: L2BatchNumber(
+                self.to_batch_number
                     .try_into()
-                    .expect("block_number_to should fit into L2BlockNumber(u32)"),
+                    .expect("to_batch_number should fit into L2BatchNumber(u32)"),
             ),
             vk_hash: self.vk_hash,
             fri_proofs,
@@ -94,8 +94,8 @@ impl TryInto<SnarkProofInputs> for GetSnarkProofPayload {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SnarkProofInputs {
-    pub from_block_number: L2BlockNumber,
-    pub to_block_number: L2BlockNumber,
+    pub from_batch_number: L2BatchNumber,
+    pub to_batch_number: L2BatchNumber,
     pub vk_hash: String,
     pub fri_proofs: Vec<ProgramProof>,
 }
@@ -105,15 +105,15 @@ pub trait ProofClient {
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, String, Vec<u8>)>>;
     async fn submit_fri_proof(
         &self,
-        block_number: u32,
+        batch_number: u32,
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()>;
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
     async fn submit_snark_proof(
         &self,
-        from_block_number: L2BlockNumber,
-        to_block_number: L2BlockNumber,
+        from_batch_number: L2BatchNumber,
+        to_batch_number: L2BatchNumber,
         vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()>;
@@ -121,14 +121,14 @@ pub trait ProofClient {
 
 #[async_trait]
 pub trait PeekableProofClient {
-    async fn peek_fri_job(&self, block_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
+    async fn peek_fri_job(&self, batch_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
     async fn peek_snark_job(
         &self,
-        from_block_number: u32,
-        to_block_number: u32,
+        from_batch_number: u32,
+        to_batch_number: u32,
     ) -> anyhow::Result<Option<SnarkProofInputs>>;
     async fn get_failed_fri_proof(
         &self,
-        block_number: u32,
+        batch_number: u32,
     ) -> anyhow::Result<Option<FailedFriProofPayload>>;
 }

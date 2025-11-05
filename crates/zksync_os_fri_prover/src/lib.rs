@@ -35,7 +35,7 @@ pub struct Args {
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
-    /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
+    /// Circuit limit - max number of MainVM circuits to instantiate to run the batch fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
     /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
@@ -165,7 +165,7 @@ pub async fn run_inner<P: ProofClient>(
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
-    let (block_number, vk_hash, prover_input) = match client.pick_fri_job().await {
+    let (batch_number, vk_hash, prover_input) = match client.pick_fri_job().await {
         Err(err) => {
             // Check if the error is a timeout error
             if err
@@ -182,21 +182,21 @@ pub async fn run_inner<P: ProofClient>(
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
             return Ok(false);
         }
-        Ok(Some(next_block)) => {
-            if !supported_versions.contains(&next_block.1) {
+        Ok(Some(next_batch)) => {
+            if !supported_versions.contains(&next_batch.1) {
                 tracing::error!(
-                    "Unsupported protocol version with vk_hash: {} for block number {}",
-                    next_block.1,
-                    next_block.0
+                    "Unsupported protocol version with vk_hash: {} for batch number {}",
+                    next_batch.1,
+                    next_batch.0
                 );
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 return Ok(false);
             }
-            next_block
+            next_batch
         }
 
         Ok(None) => {
-            tracing::info!("No pending blocks to prove, retrying in 100ms...");
+            tracing::info!("No pending batches to prove, retrying in 100ms...");
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             return Ok(false);
         }
@@ -211,16 +211,16 @@ pub async fn run_inner<P: ProofClient>(
         .collect();
 
     tracing::info!(
-        "Starting proving block number {} with vk hash {}",
-        block_number,
+        "Starting proving batch number {} with vk hash {}",
+        batch_number,
         vk_hash
     );
 
     let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
 
     tracing::info!(
-        "Finished proving block number {} with vk hash {}",
-        block_number,
+        "Finished proving batch number {} with vk hash {}",
+        batch_number,
         vk_hash
     );
 
@@ -237,20 +237,20 @@ pub async fn run_inner<P: ProofClient>(
     }
 
     FRI_PROVER_METRICS
-        .latest_proven_block
-        .set(block_number as i64);
+        .latest_proven_batch
+        .set(batch_number as i64);
 
     FRI_PROVER_METRICS
         .time_taken
         .observe(started_at.elapsed().as_secs_f64());
 
     match client
-        .submit_fri_proof(block_number, vk_hash.clone(), proof_b64)
+        .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
         .await
     {
         Ok(_) => tracing::info!(
-            "Successfully submitted proof for block number {} with vk hash {}",
-            block_number,
+            "Successfully submitted proof for batch number {} with vk hash {}",
+            batch_number,
             vk_hash
         ),
         Err(err) => {
@@ -261,8 +261,8 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting proof for block number {} with vk hash {}: {}",
-                    block_number,
+                    "Timeout submitting proof for batch number {} with vk hash {}: {}",
+                    batch_number,
                     vk_hash,
                     err
                 );
@@ -270,8 +270,8 @@ pub async fn run_inner<P: ProofClient>(
                 FRI_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit proof for block number {} with vk hash {}: {}",
-                block_number,
+                "Failed to submit proof for batch number {} with vk hash {}: {}",
+                batch_number,
                 vk_hash,
                 err
             );
