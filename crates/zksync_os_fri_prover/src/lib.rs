@@ -188,7 +188,7 @@ pub async fn run(args: Args) {
 
         // If no tasks were found across all sequencers, wait before trying again
         if !any_task_found {
-            tracing::info!("No pending blocks to prove from any sequencer, retrying in 100ms...");
+            tracing::info!("No pending batches to prove from any sequencer, retrying in 100ms...");
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
@@ -224,7 +224,7 @@ pub async fn run_inner<P: ProofClient>(
                 return Ok(false);
             }
             tracing::error!(
-                "Error fetching next prover job from {}: {err}",
+                "Error fetching next prover job from sequencer {}: {err}",
                 client.sequencer_url()
             );
             return Ok(false);
@@ -244,7 +244,7 @@ pub async fn run_inner<P: ProofClient>(
 
         Ok(None) => {
             tracing::debug!(
-                "No pending batches to prove from {}, trying next sequencer...",
+                "No pending batches to prove from sequencer {}, trying next sequencer...",
                 client.sequencer_url()
             );
             return Ok(false);
@@ -260,7 +260,7 @@ pub async fn run_inner<P: ProofClient>(
         .collect();
 
     tracing::info!(
-        "Starting proving block number {} with vk hash {} from sequencer {}",
+        "Starting proving batch number {} with vk hash {} from sequencer {}",
         batch_number,
         vk_hash,
         client.sequencer_url()

@@ -312,7 +312,7 @@ pub async fn run_inner<P: ProofClient>(
                 return Ok(false);
             }
             tracing::error!(
-                "Failed to pick SNARK job from {}: {e:?}",
+                "Failed to pick SNARK job from sequencer {}: {e:?}",
                 client.sequencer_url()
             );
             return Ok(false);
