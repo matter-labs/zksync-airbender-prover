@@ -65,12 +65,7 @@ impl Debug for SupportedProtocolVersions {
 impl SupportedProtocolVersions {
     /// Checks if the given VK hash is supported.
     pub fn contains(&self, vk_hash: &str) -> bool {
-        for version in &self.versions {
-            if version.vk_hash.0 == vk_hash {
-                return true;
-            }
-        }
-        false
+        self.versions.iter().any(|v| v.vk_hash.0 == vk_hash)
     }
 
     /// Returns the list of supported VK hashes as strings.
