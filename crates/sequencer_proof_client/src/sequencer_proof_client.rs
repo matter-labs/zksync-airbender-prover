@@ -2,8 +2,9 @@ use std::time::{Duration, Instant};
 
 use crate::metrics::Method;
 use crate::{
-    FailedFriProofPayload, GetSnarkProofPayload, NextFriProverJobPayload, PeekableProofClient,
-    ProofClient, SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
+    FailedFriProofPayload, FriJobInputs, GetSnarkProofPayload, NextFriProverJobPayload,
+    PeekableProofClient, ProofClient, SnarkProofInputs, SubmitFriProofPayload,
+    SubmitSnarkProofPayload,
 };
 use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
@@ -72,7 +73,7 @@ impl SequencerProofClient {
 impl ProofClient for SequencerProofClient {
     /// Fetch the next batch to prove.
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).
-    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, String, Vec<u8>)>> {
+    async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
         let url = format!(
             "{}/{}/FRI/pick?id={}",
             self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
@@ -91,7 +92,11 @@ impl ProofClient for SequencerProofClient {
                 let data = STANDARD
                     .decode(&body.prover_input)
                     .map_err(|e| anyhow!("Failed to decode batch data: {e}"))?;
-                Ok(Some((body.batch_number, body.vk_hash, data)))
+                Ok(Some(FriJobInputs {
+                    batch_number: body.batch_number,
+                    vk_hash: body.vk_hash,
+                    prover_input: data,
+                }))
             }
             StatusCode::NO_CONTENT => Ok(None),
             s => Err(anyhow!(

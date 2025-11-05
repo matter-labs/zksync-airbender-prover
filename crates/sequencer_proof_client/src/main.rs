@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
-    sequencer_proof_client::SequencerProofClient, L2BatchNumber, ProofClient,
+    sequencer_proof_client::SequencerProofClient, FriJobInputs, L2BatchNumber, ProofClient,
 };
 
 #[derive(Parser)]
@@ -130,12 +130,16 @@ async fn main() -> Result<()> {
         Commands::PickFri { path } => {
             tracing::info!("Picking next FRI proof job from sequencer at {}", url);
             match client.pick_fri_job().await? {
-                Some((batch_number, vk_hash, data)) => {
+                Some(FriJobInputs {
+                    batch_number,
+                    vk_hash,
+                    prover_input,
+                }) => {
                     tracing::info!(
                         "Picked FRI job for batch {batch_number} with vk {vk_hash}, saved job to path {path}"
                     );
                     let mut dst = std::fs::File::create(path).unwrap();
-                    serde_json::to_writer_pretty(&mut dst, &data).unwrap();
+                    serde_json::to_writer_pretty(&mut dst, &prover_input).unwrap();
                 }
                 None => {
                     tracing::info!("No FRI proof jobs available at the moment.");

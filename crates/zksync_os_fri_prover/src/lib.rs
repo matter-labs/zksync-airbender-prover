@@ -13,7 +13,9 @@ use zksync_airbender_cli::prover_utils::{
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{sequencer_proof_client::SequencerProofClient, ProofClient};
+use zksync_sequencer_proof_client::{
+    sequencer_proof_client::SequencerProofClient, FriJobInputs, ProofClient,
+};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -165,7 +167,11 @@ pub async fn run_inner<P: ProofClient>(
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
-    let (batch_number, vk_hash, prover_input) = match client.pick_fri_job().await {
+    let FriJobInputs {
+        batch_number,
+        vk_hash,
+        prover_input,
+    } = match client.pick_fri_job().await {
         Err(err) => {
             // Check if the error is a timeout error
             if err
@@ -182,17 +188,17 @@ pub async fn run_inner<P: ProofClient>(
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
             return Ok(false);
         }
-        Ok(Some(next_batch)) => {
-            if !supported_versions.contains(&next_batch.1) {
+        Ok(Some(fri_job_input)) => {
+            if !supported_versions.contains(&fri_job_input.vk_hash) {
                 tracing::error!(
                     "Unsupported protocol version with vk_hash: {} for batch number {}",
-                    next_batch.1,
-                    next_batch.0
+                    fri_job_input.vk_hash,
+                    fri_job_input.batch_number
                 );
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 return Ok(false);
             }
-            next_batch
+            fri_job_input
         }
 
         Ok(None) => {

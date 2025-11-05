@@ -100,9 +100,16 @@ pub struct SnarkProofInputs {
     pub fri_proofs: Vec<ProgramProof>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FriJobInputs {
+    pub batch_number: u32,
+    pub vk_hash: String,
+    pub prover_input: Vec<u8>,
+}
+
 #[async_trait]
 pub trait ProofClient {
-    async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, String, Vec<u8>)>>;
+    async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>>;
     async fn submit_fri_proof(
         &self,
         batch_number: u32,
