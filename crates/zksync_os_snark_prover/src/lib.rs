@@ -1,5 +1,6 @@
 #[cfg(feature = "gpu")]
 use proof_compression::serialization::PlonkSnarkVerifierCircuitDeviceSetupWrapper;
+use protocol_version::SupportedProtocolVersions;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
@@ -77,12 +78,12 @@ pub fn merge_fris(
 
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
-        let up_to_block = snark_proof_input.from_block_number.0 + i as u32 - 1;
-        let curr_block = snark_proof_input.from_block_number.0 + i as u32;
+        let up_to_batch = snark_proof_input.from_batch_number.0 + i as u32 - 1;
+        let curr_batch = snark_proof_input.from_batch_number.0 + i as u32;
         tracing::info!(
-            "Linking proofs up to {} with proof for block {}",
-            up_to_block,
-            curr_block
+            "Linking proofs up to {} with proof for batch {}",
+            up_to_batch,
+            curr_batch
         );
         let second_proof = snark_proof_input.fri_proofs[i].clone();
 
@@ -128,7 +129,7 @@ pub fn merge_fris(
         }
 
         proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
-        tracing::info!("Finished linking proofs up to block {}", up_to_block);
+        tracing::info!("Finished linking proofs up to batch {}", up_to_batch);
     }
 
     SNARK_PROVER_METRICS
@@ -138,8 +139,8 @@ pub fn merge_fris(
     // TODO: We can do a recursion step here as well, IIUC
     tracing::info!(
         "Finishing linking all proofs from {} to {}",
-        snark_proof_input.from_block_number,
-        snark_proof_input.to_block_number
+        snark_proof_input.from_batch_number,
+        snark_proof_input.to_batch_number
     );
     proof
 }
@@ -185,6 +186,9 @@ pub async fn run_linking_fri_snark(
 
     let startup_started_at = Instant::now();
 
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::info!("{:#?}", supported_versions);
+
     tracing::info!(
         "Starting zksync_os_snark_prover for {} sequencer(s) with request timeout of {}s",
         clients.len(),
@@ -225,6 +229,7 @@ pub async fn run_linking_fri_snark(
                 #[cfg(feature = "gpu")]
                 &precomputations,
                 disable_zk,
+                &supported_versions,
             )
             .await
             .expect("Failed to run SNARK prover");
@@ -262,6 +267,7 @@ pub async fn run_inner<P: ProofClient>(
         SnarkWrapperVK,
     ),
     disable_zk: bool,
+    supported_protocol_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
     tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
@@ -272,6 +278,15 @@ pub async fn run_inner<P: ProofClient>(
                     "No FRI proofs were sent, issue with Prover API/Sequencer, quitting...";
                 tracing::error!(err_msg);
                 return Err(anyhow::anyhow!(err_msg));
+            }
+            if !supported_protocol_versions.contains(&snark_proof_input.vk_hash) {
+                tracing::error!(
+                    "Received unsupported protocol version with vk_hash {} for batches between [{} and {}], skipping",
+                    snark_proof_input.vk_hash,
+                    snark_proof_input.from_batch_number.0,
+                    snark_proof_input.to_batch_number.0
+                );
+                return Ok(false);
             }
             snark_proof_input
         }
@@ -303,13 +318,16 @@ pub async fn run_inner<P: ProofClient>(
             return Ok(false);
         }
     };
-    let start_block = snark_proof_input.from_block_number;
-    let end_block = snark_proof_input.to_block_number;
+    let start_batch = snark_proof_input.from_batch_number;
+    let end_batch = snark_proof_input.to_batch_number;
+    let vk_hash = snark_proof_input.vk_hash.clone();
+
     tracing::info!(
-        "Picked job from sequencer {}, will aggregate from {} to {} inclusive",
+        "Finished picking job from sequencer {} with VK hash {}, will aggregate from {} to {} inclusive",
         client.sequencer_url(),
-        start_block,
-        end_block
+        vk_hash,
+        start_batch,
+        end_batch,
     );
     tracing::info!("Initializing GPU state");
     #[cfg(feature = "gpu")]
@@ -385,20 +403,21 @@ pub async fn run_inner<P: ProofClient>(
     );
 
     match client
-        .submit_snark_proof(start_block, end_block, snark_proof)
+        .submit_snark_proof(start_batch, end_batch, vk_hash.clone(), snark_proof)
         .await
     {
         Ok(()) => {
             tracing::info!(
-                "Successfully submitted SNARK proof for blocks {} to {} to sequencer {}",
-                start_block,
-                end_block,
+                "Successfully submitted SNARK proof for batches {} to {} with vk hash {} to sequencer {}",
+                start_batch,
+                end_batch,
+                vk_hash,
                 client.sequencer_url()
             );
 
             SNARK_PROVER_METRICS
-                .latest_proven_block
-                .set(end_block.0 as i64);
+                .latest_proven_batch
+                .set(end_batch.0 as i64);
         }
         Err(e) => {
             // Check if the error is a timeout error
@@ -407,19 +426,21 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting SNARK proof for blocks {} to {} to sequencer {}: {e:?}",
-                    start_block,
-                    end_block,
+                    "Timeout submitting SNARK proof with vk hash {} for batches {} to {} to sequencer {}: {e:?}",
+                    vk_hash,
+                    start_batch,
+                    end_batch,
                     client.sequencer_url()
                 );
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit SNARK job to sequencer {}, blocks {} to {} due to {e:?}, skipping",
+                "Failed to submit SNARK job with vk hash {}, batches {} to {} to sequencer {} due to {e:?}, skipping",
+                vk_hash,
+                start_batch,
+                end_batch,
                 client.sequencer_url(),
-                start_block,
-                end_block
             );
         }
     };
