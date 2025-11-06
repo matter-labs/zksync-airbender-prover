@@ -162,18 +162,16 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
 
 pub async fn run_linking_fri_snark(
     _binary_path: String,
-    sequencer_urls: Option<Vec<Url>>,
+    sequencer_urls: Vec<Url>,
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
     request_timeout_secs: u64,
     disable_zk: bool,
 ) -> anyhow::Result<()> {
-    let default_urls = vec![Url::parse("http://localhost:3124").expect("Invalid default URL")];
-    let sequencer_urls = sequencer_urls.unwrap_or(default_urls);
     let timeout = Duration::from_secs(request_timeout_secs);
 
-    let client = MultiSequencerProofClient::new_with_timeout(sequencer_urls.clone(), Some(timeout));
+    let client = MultiSequencerProofClient::new_with_timeout(sequencer_urls, Some(timeout));
 
     let startup_started_at = Instant::now();
 
