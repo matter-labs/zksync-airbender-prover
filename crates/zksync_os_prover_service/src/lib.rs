@@ -56,7 +56,7 @@ pub struct Args {
     pub fri_path: Option<PathBuf>,
     /// Disable ZK for SNARK proofs
     #[arg(long, default_value_t = false)]
-    disable_zk: bool,
+    pub disable_zk: bool,
 }
 
 pub fn init_tracing() {
