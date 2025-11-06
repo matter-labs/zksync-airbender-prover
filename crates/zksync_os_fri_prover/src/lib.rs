@@ -253,8 +253,6 @@ pub async fn run_inner<P: ProofClient>(
         vk_hash
     );
 
-    serialize_to_file(&proof, Path::new("fri_proof.json"));
-
     let proof_bytes: Vec<u8> = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
         .expect("failed to bincode-serialize proof");
 
