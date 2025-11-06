@@ -1,7 +1,11 @@
 // TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
 
+pub mod multi_sequencer_proof_client;
 pub mod sequencer_proof_client;
+
+pub use multi_sequencer_proof_client::MultiSequencerProofClient;
+pub use sequencer_proof_client::SequencerProofClient;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
 use async_trait::async_trait;

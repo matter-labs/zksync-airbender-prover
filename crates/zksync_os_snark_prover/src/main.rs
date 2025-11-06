@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use zksync_os_snark_prover::{
@@ -41,8 +42,8 @@ enum Commands {
     RunProver {
         /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
         /// The prover will poll sequencers in round-robin fashion
-        #[arg(short, long, value_delimiter = ',')]
-        sequencer_urls: Option<Vec<String>>,
+        #[arg(short, long, alias = "sequencer-url", value_delimiter = ',', value_parser = clap::value_parser!(Url))]
+        sequencer_urls: Option<Vec<Url>>,
         #[clap(flatten)]
         setup: SetupOptions,
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely

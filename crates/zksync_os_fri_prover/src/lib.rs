@@ -7,15 +7,14 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
+use reqwest::Url;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{
-    sequencer_proof_client::SequencerProofClient, FriJobInputs, ProofClient,
-};
+use zksync_sequencer_proof_client::{FriJobInputs, MultiSequencerProofClient, ProofClient};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -32,10 +31,12 @@ pub struct Args {
     #[arg(
         short,
         long,
+        alias = "base-url",
         value_delimiter = ',',
-        default_value = "http://localhost:3124"
+        default_value = "http://localhost:3124",
+        value_parser = clap::value_parser!(Url)
     )]
-    pub sequencer_urls: Vec<String>,
+    pub sequencer_urls: Vec<Url>,
     /// Enable logging and use the logging-enabled binary
     /// This is not used in the FRI prover, but is kept for backward compatibility.
     #[arg(long)]
@@ -107,12 +108,7 @@ pub async fn run(args: Args) {
 
     let timeout = Duration::from_secs(args.request_timeout_secs);
 
-    // Create clients for all sequencers
-    let clients: Vec<SequencerProofClient> = args
-        .sequencer_urls
-        .iter()
-        .map(|url| SequencerProofClient::new_with_timeout(url.clone(), Some(timeout)))
-        .collect();
+    let client = MultiSequencerProofClient::new_with_timeout(args.sequencer_urls, Some(timeout));
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -137,53 +133,41 @@ pub async fn run(args: Args) {
     let mut gpu_state = GpuSharedState::new(&binary);
 
     tracing::info!(
-        "Starting Zksync OS FRI prover for {} sequencer(s) with request timeout of {}s",
-        clients.len(),
+        "Starting Zksync OS FRI prover with request timeout of {}s",
         args.request_timeout_secs
     );
-    clients.iter().for_each(|client| {
-        tracing::info!("  - {}", client.sequencer_url());
-    });
 
     let mut proof_count = 0;
 
     loop {
-        let mut any_task_found = false;
+        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
-        // Poll all sequencers in round-robin fashion
-        for client in &clients {
-            tracing::debug!("Polling sequencer: {}", client.sequencer_url());
+        let proof_generated = run_inner(
+            &client,
+            &binary,
+            args.circuit_limit,
+            &mut gpu_state,
+            args.path.clone(),
+            &supported_versions,
+        )
+        .await
+        .expect("Failed to run FRI prover");
 
-            let proof_generated = run_inner(
-                client,
-                &binary,
-                args.circuit_limit,
-                &mut gpu_state,
-                args.path.clone(),
-                &supported_versions,
-            )
-            .await
-            .expect("Failed to run FRI prover");
+        if proof_generated {
+            proof_count += 1;
 
-            if proof_generated {
-                any_task_found = true;
-                proof_count += 1;
-
-                // Check if we've reached the iteration limit
-                if let Some(max_proofs_generated) = args.iterations {
-                    if proof_count >= max_proofs_generated {
-                        tracing::info!(
-                            "Reached maximum iterations ({max_proofs_generated}), exiting...",
-                        );
-                        return;
-                    }
+            // Check if we've reached the iteration limit
+            if let Some(max_proofs_generated) = args.iterations {
+                if proof_count >= max_proofs_generated {
+                    tracing::info!(
+                        "Reached maximum iterations ({max_proofs_generated}), exiting...",
+                    );
+                    return;
                 }
             }
-        }
-
-        // If no tasks were found across all sequencers, wait before trying again
-        if !any_task_found {
-            tracing::info!("No pending batches to prove from any sequencer, retrying in 100ms...");
+        } else {
+            // If no task was found, wait before trying again
+            tracing::info!("No pending batches to prove from sequencer, retrying in 100ms...");
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }

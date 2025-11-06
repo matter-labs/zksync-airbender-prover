@@ -12,11 +12,10 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
 use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
-use reqwest::StatusCode;
+use reqwest::{StatusCode, Url};
 use serde_json;
 use zkos_wrapper::SnarkWrapperProof;
 
-// TODO!: As part of tooling rework, move all usage of `url` from String to URL.
 const SEQUENCER_PROVER_API_PATH: &str = "prover-jobs/v1";
 
 //TODO!: To be refactored into pod name.
@@ -25,28 +24,27 @@ const PROVER_ID: &str = "unknown_prover";
 #[derive(Debug)]
 pub struct SequencerProofClient {
     client: reqwest::Client,
-    url: String,
+    url: Url,
 }
 
 impl SequencerProofClient {
-    pub fn new(sequencer_url: String) -> Self {
-        Self::new_with_timeout(sequencer_url, None)
+    /// Create a new client from a URL.
+    pub fn new(url: Url) -> Self {
+        Self::new_with_timeout(url, None)
     }
 
-    pub fn new_with_timeout(sequencer_url: String, timeout: Option<Duration>) -> Self {
+    /// Create a new client from a URL with custom timeout.
+    pub fn new_with_timeout(url: Url, timeout: Option<Duration>) -> Self {
         let client = reqwest::Client::builder()
             .timeout(timeout.unwrap_or(Duration::from_secs(2))) // default timeout is 2 seconds
             .build()
             .expect("Failed to create reqwest client");
 
-        Self {
-            client,
-            url: sequencer_url,
-        }
+        Self { client, url }
     }
 
     pub fn sequencer_url(&self) -> &str {
-        &self.url
+        self.url.as_str()
     }
 
     pub fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String> {
@@ -72,20 +70,19 @@ impl SequencerProofClient {
 #[async_trait]
 impl ProofClient for SequencerProofClient {
     fn sequencer_url(&self) -> &str {
-        &self.url
+        self.url.as_str()
     }
 
     /// Fetch the next batch to prove.
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
-        let url = format!(
-            "{}/{}/FRI/pick?id={}",
-            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
-        );
+        let mut url = self.url.clone();
+        url.set_path(&format!("{SEQUENCER_PROVER_API_PATH}/FRI/pick"));
+        url.set_query(Some(&format!("id={PROVER_ID}")));
 
         let started_at = Instant::now();
 
-        let resp = self.client.post(&url).send().await?;
+        let resp = self.client.post(url.clone()).send().await?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickFri]
             .observe(started_at.elapsed().as_secs_f64());
@@ -117,10 +114,10 @@ impl ProofClient for SequencerProofClient {
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()> {
-        let url = format!(
-            "{}/{}/FRI/submit?id={}",
-            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
-        );
+        let mut url = self.url.clone();
+        url.set_path(&format!("{SEQUENCER_PROVER_API_PATH}/FRI/submit"));
+        url.set_query(Some(&format!("id={PROVER_ID}")));
+
         let payload = SubmitFriProofPayload {
             batch_number: batch_number as u64,
             vk_hash,
@@ -129,7 +126,7 @@ impl ProofClient for SequencerProofClient {
 
         let started_at = Instant::now();
 
-        let resp = self.client.post(&url).json(&payload).send().await?;
+        let resp = self.client.post(url).json(&payload).send().await?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitFri]
             .observe(started_at.elapsed().as_secs_f64());
@@ -145,14 +142,13 @@ impl ProofClient for SequencerProofClient {
     }
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
-        let url = format!(
-            "{}/{}/SNARK/pick?id={}",
-            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
-        );
+        let mut url = self.url.clone();
+        url.set_path(&format!("{SEQUENCER_PROVER_API_PATH}/SNARK/pick"));
+        url.set_query(Some(&format!("id={PROVER_ID}")));
 
         let started_at = Instant::now();
 
-        let resp = self.client.post(&url).send().await?;
+        let resp = self.client.post(url).send().await?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickSnark]
             .observe(started_at.elapsed().as_secs_f64());
@@ -178,10 +174,9 @@ impl ProofClient for SequencerProofClient {
         vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
-        let url = format!(
-            "{}/{}/SNARK/submit?id={}",
-            self.url, SEQUENCER_PROVER_API_PATH, PROVER_ID
-        );
+        let mut url = self.url.clone();
+        url.set_path(&format!("{SEQUENCER_PROVER_API_PATH}/SNARK/submit"));
+        url.set_query(Some(&format!("id={PROVER_ID}")));
 
         let started_at = Instant::now();
 
@@ -196,7 +191,7 @@ impl ProofClient for SequencerProofClient {
             proof: serialized_proof,
         };
         self.client
-            .post(&url)
+            .post(url)
             .json(&payload)
             .send()
             .await?
@@ -212,11 +207,11 @@ impl ProofClient for SequencerProofClient {
 impl PeekableProofClient for SequencerProofClient {
     /// Note: you can peek only failed jobs as successful ones are removed.
     async fn peek_fri_job(&self, batch_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
-        let url = format!(
-            "{}/{}/FRI/{batch_number}/peek",
-            self.url, SEQUENCER_PROVER_API_PATH
-        );
-        let resp = self.client.get(&url).send().await?;
+        let mut url = self.url.clone();
+        url.set_path(&format!(
+            "{SEQUENCER_PROVER_API_PATH}/FRI/{batch_number}/peek"
+        ));
+        let resp = self.client.get(url).send().await?;
         match resp.status() {
             StatusCode::OK => {
                 let body: NextFriProverJobPayload = resp.json().await?;
@@ -237,11 +232,11 @@ impl PeekableProofClient for SequencerProofClient {
         from_batch_number: u32,
         to_batch_number: u32,
     ) -> anyhow::Result<Option<SnarkProofInputs>> {
-        let url = format!(
-            "{}/{}/SNARK/{from_batch_number}/{to_batch_number}/peek",
-            self.url, SEQUENCER_PROVER_API_PATH
-        );
-        let resp = self.client.get(&url).send().await?;
+        let mut url = self.url.clone();
+        url.set_path(&format!(
+            "{SEQUENCER_PROVER_API_PATH}/SNARK/{from_batch_number}/{to_batch_number}/peek"
+        ));
+        let resp = self.client.get(url).send().await?;
         match resp.status() {
             StatusCode::OK => {
                 let get_snark_proof_payload = resp.json::<GetSnarkProofPayload>().await?;
@@ -260,11 +255,11 @@ impl PeekableProofClient for SequencerProofClient {
         &self,
         batch_number: u32,
     ) -> anyhow::Result<Option<FailedFriProofPayload>> {
-        let url = format!(
-            "{}/{}/FRI/{batch_number}/failed",
-            self.url, SEQUENCER_PROVER_API_PATH
-        );
-        let resp = self.client.get(&url).send().await?;
+        let mut url = self.url.clone();
+        url.set_path(&format!(
+            "{SEQUENCER_PROVER_API_PATH}/FRI/{batch_number}/failed"
+        ));
+        let resp = self.client.get(url).send().await?;
         match resp.status() {
             StatusCode::OK => {
                 let body: FailedFriProofPayload = resp.json().await?;

@@ -5088,6 +5088,7 @@ dependencies = [
  "cli",
  "execution_utils",
  "protocol_version",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
