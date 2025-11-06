@@ -43,10 +43,6 @@ impl SequencerProofClient {
         Self { client, url }
     }
 
-    pub fn sequencer_url(&self) -> &str {
-        self.url.as_str()
-    }
-
     pub fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String> {
         let serialized_proof = serde_json::to_string(&proof)?;
 
