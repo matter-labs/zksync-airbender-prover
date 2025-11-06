@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.5.0...v0.5.1) (2025-11-06)
+
+
+### Features
+
+* make Args::disable_zk public ([#99](https://github.com/matter-labs/zksync-airbender-prover/issues/99)) ([299d950](https://github.com/matter-labs/zksync-airbender-prover/commit/299d9504c25293250fc4ec5d14909ee1d9ee56b4))
+
 ## [0.5.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.4.8...v0.5.0) (2025-11-06)
 
 
