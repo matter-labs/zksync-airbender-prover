@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use reqwest::Url;
 
 use crate::{
-    FailedFriProofPayload, FriJobInputs, L2BatchNumber, PeekableProofClient, ProofClient,
+    FriJobInputs, L2BatchNumber, ProofClient,
     SequencerProofClient, SnarkProofInputs,
 };
 use zkos_wrapper::SnarkWrapperProof;
