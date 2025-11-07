@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use zksync_os_snark_prover::{
@@ -39,8 +40,10 @@ enum Commands {
     },
 
     RunProver {
-        #[arg(short, long)]
-        sequencer_url: Option<String>,
+        /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
+        /// The prover will poll sequencers in round-robin fashion
+        #[arg(short, long, alias = "sequencer-url", value_delimiter = ',', default_value = "http://localhost:3124", value_parser = clap::value_parser!(Url))]
+        sequencer_urls: Vec<Url>,
         #[clap(flatten)]
         setup: SetupOptions,
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
@@ -78,7 +81,7 @@ fn main() {
             vk_verification_key_file,
         ),
         Commands::RunProver {
-            sequencer_url,
+            sequencer_urls,
             setup:
                 SetupOptions {
                     binary_path,
@@ -107,14 +110,24 @@ fn main() {
                     metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
                 });
 
+                let timeout = Duration::from_secs(request_timeout_secs);
+                let client =
+                    zksync_sequencer_proof_client::MultiSequencerProofClient::new_with_timeout(
+                        sequencer_urls,
+                        Some(timeout),
+                    );
+                tracing::info!(
+                    "Starting zksync_os_snark_prover with request timeout of {}s",
+                    request_timeout_secs
+                );
+
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
-                        sequencer_url,
+                        &client,
                         output_dir,
                         trusted_setup_file,
                         iterations,
-                        request_timeout_secs,
                         disable_zk,
                     ) => {
                         tracing::info!("SNARK prover finished");

@@ -8,6 +8,7 @@ use std::{
 
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
+use reqwest::Url;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
@@ -19,7 +20,7 @@ use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 #[cfg(feature = "gpu")]
 use zksync_os_snark_prover::compute_compression_vk;
-use zksync_sequencer_proof_client::sequencer_proof_client::SequencerProofClient;
+use zksync_sequencer_proof_client::MultiSequencerProofClient;
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -33,9 +34,10 @@ pub struct Args {
     /// Max amount of FRI proofs per SNARK (default value - 100)
     #[arg(long, default_value = "100", conflicts_with = "max_snark_latency")]
     pub max_fris_per_snark: Option<usize>,
-    /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
-    #[arg(short, long, default_value = "http://localhost:3124")]
-    pub base_url: String,
+    /// Base URLs for the proof-data server (e.g., "http://<IP>:<PORT>")
+    /// Multiple URLs can be provided separated by commas for round-robin load balancing
+    #[arg(short, long, alias = "base-url", value_delimiter = ',', default_value = "http://localhost:3124", value_parser = clap::value_parser!(Url))]
+    pub sequencer_urls: Vec<Url>,
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
@@ -65,7 +67,7 @@ pub fn init_tracing() {
 }
 
 pub async fn run(args: Args) {
-    let client = SequencerProofClient::new(args.base_url);
+    let client = MultiSequencerProofClient::new(args.sequencer_urls);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -91,10 +93,7 @@ pub async fn run(args: Args) {
         precomputations
     };
 
-    tracing::info!(
-        "Starting Zksync OS Prover Service for {}",
-        client.sequencer_url()
-    );
+    tracing::info!("Starting Zksync OS Prover Service");
 
     let mut snark_proof_count = 0;
     let mut snark_latency = Instant::now();
