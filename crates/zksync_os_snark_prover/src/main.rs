@@ -110,14 +110,24 @@ fn main() {
                     metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
                 });
 
+                let timeout = Duration::from_secs(request_timeout_secs);
+                let client =
+                    zksync_sequencer_proof_client::MultiSequencerProofClient::new_with_timeout(
+                        sequencer_urls,
+                        Some(timeout),
+                    );
+                tracing::info!(
+                    "Starting zksync_os_snark_prover with request timeout of {}s",
+                    request_timeout_secs
+                );
+
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
-                        sequencer_urls,
+                        &client,
                         output_dir,
                         trusted_setup_file,
                         iterations,
-                        request_timeout_secs,
                         disable_zk,
                     ) => {
                         tracing::info!("SNARK prover finished");

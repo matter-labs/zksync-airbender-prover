@@ -1,7 +1,6 @@
 #[cfg(feature = "gpu")]
 use proof_compression::serialization::PlonkSnarkVerifierCircuitDeviceSetupWrapper;
 use protocol_version::SupportedProtocolVersions;
-use reqwest::Url;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
@@ -20,7 +19,7 @@ use zksync_airbender_execution_utils::{
     get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use zksync_sequencer_proof_client::{MultiSequencerProofClient, ProofClient, SnarkProofInputs};
+use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
 use crate::metrics::SNARK_PROVER_METRICS;
 
@@ -162,26 +161,17 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
 
 pub async fn run_linking_fri_snark(
     _binary_path: String,
-    sequencer_urls: Vec<Url>,
+    client: &dyn ProofClient,
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
-    request_timeout_secs: u64,
     disable_zk: bool,
 ) -> anyhow::Result<()> {
-    let timeout = Duration::from_secs(request_timeout_secs);
-
-    let client = MultiSequencerProofClient::new_with_timeout(sequencer_urls, Some(timeout));
-
     let startup_started_at = Instant::now();
 
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    tracing::info!(
-        "Starting zksync_os_snark_prover with request timeout of {}s",
-        request_timeout_secs
-    );
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     #[cfg(feature = "gpu")]
@@ -203,7 +193,7 @@ pub async fn run_linking_fri_snark(
         tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
         let proof_generated = run_inner(
-            &client,
+            client,
             &verifier_binary,
             output_dir.clone(),
             trusted_setup_file.clone(),
@@ -234,8 +224,8 @@ pub async fn run_linking_fri_snark(
     }
 }
 
-pub async fn run_inner<P: ProofClient>(
-    client: &P,
+pub async fn run_inner(
+    client: &dyn ProofClient,
     verifier_binary: &Vec<u32>,
     output_dir: String,
     trusted_setup_file: String,
