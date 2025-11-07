@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use reqwest::Url;
+use url::Url;
 
 use crate::{
     FriJobInputs, L2BatchNumber, ProofClient,

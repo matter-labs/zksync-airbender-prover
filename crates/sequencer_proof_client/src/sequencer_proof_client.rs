@@ -12,7 +12,8 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
 use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
-use reqwest::{StatusCode, Url};
+use reqwest::StatusCode;
+use url::Url;
 use serde_json;
 use zkos_wrapper::SnarkWrapperProof;
 

@@ -8,7 +8,7 @@ use std::{
 
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
-use reqwest::Url;
+use url::Url;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
