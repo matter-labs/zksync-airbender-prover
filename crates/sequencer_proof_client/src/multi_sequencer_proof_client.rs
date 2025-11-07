@@ -4,10 +4,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use url::Url;
 
-use crate::{
-    FriJobInputs, L2BatchNumber, ProofClient,
-    SequencerProofClient, SnarkProofInputs,
-};
+use crate::{FriJobInputs, L2BatchNumber, ProofClient, SequencerProofClient, SnarkProofInputs};
 use zkos_wrapper::SnarkWrapperProof;
 
 /// A proof client that distributes requests across multiple sequencer URLs using round-robin.

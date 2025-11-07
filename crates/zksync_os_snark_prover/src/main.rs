@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
-use url::Url;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
+use url::Url;
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };

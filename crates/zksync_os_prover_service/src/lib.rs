@@ -8,8 +8,8 @@ use std::{
 
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
-use url::Url;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use url::Url;
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
 use zksync_airbender_cli::prover_utils::load_binary_from_path;

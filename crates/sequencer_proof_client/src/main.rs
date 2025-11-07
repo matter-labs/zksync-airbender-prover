@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use url::Url;
 use tracing_subscriber::{fmt, EnvFilter};
+use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
     FriJobInputs, L2BatchNumber, ProofClient, SequencerProofClient,

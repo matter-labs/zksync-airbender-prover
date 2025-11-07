@@ -13,8 +13,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
 use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
 use reqwest::StatusCode;
-use url::Url;
 use serde_json;
+use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 
 const SEQUENCER_PROVER_API_PATH: &str = "prover-jobs/v1";
@@ -73,7 +73,9 @@ impl ProofClient for SequencerProofClient {
     /// Fetch the next batch to prove.
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
-        let url = self.url.join(&format!("{SEQUENCER_PROVER_API_PATH}/FRI/pick?id={PROVER_ID}"))?;
+        let url = self.url.join(&format!(
+            "{SEQUENCER_PROVER_API_PATH}/FRI/pick?id={PROVER_ID}"
+        ))?;
 
         let started_at = Instant::now();
 
@@ -109,7 +111,9 @@ impl ProofClient for SequencerProofClient {
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()> {
-        let url = self.url.join(&format!("{SEQUENCER_PROVER_API_PATH}/FRI/submit?id={PROVER_ID}"))?;
+        let url = self.url.join(&format!(
+            "{SEQUENCER_PROVER_API_PATH}/FRI/submit?id={PROVER_ID}"
+        ))?;
 
         let payload = SubmitFriProofPayload {
             batch_number: batch_number as u64,
@@ -135,7 +139,9 @@ impl ProofClient for SequencerProofClient {
     }
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
-        let url = self.url.join(&format!("{SEQUENCER_PROVER_API_PATH}/SNARK/pick?id={PROVER_ID}"))?;
+        let url = self.url.join(&format!(
+            "{SEQUENCER_PROVER_API_PATH}/SNARK/pick?id={PROVER_ID}"
+        ))?;
 
         let started_at = Instant::now();
 
@@ -165,7 +171,9 @@ impl ProofClient for SequencerProofClient {
         vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
-        let url = self.url.join(&format!("{SEQUENCER_PROVER_API_PATH}/SNARK/submit?id={PROVER_ID}"))?;
+        let url = self.url.join(&format!(
+            "{SEQUENCER_PROVER_API_PATH}/SNARK/submit?id={PROVER_ID}"
+        ))?;
 
         let started_at = Instant::now();
 
