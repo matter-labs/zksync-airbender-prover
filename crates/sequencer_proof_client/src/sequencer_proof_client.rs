@@ -2,9 +2,9 @@ use std::time::{Duration, Instant};
 
 use crate::metrics::Method;
 use crate::{
-    FailedFriProofPayload, FriJobInputs, GetSnarkProofPayload, NextFriProverJobPayload,
-    PeekableProofClient, ProofClient, SnarkProofInputs, SubmitFriProofPayload,
-    SubmitSnarkProofPayload,
+    redact_auth_from_url, FailedFriProofPayload, FriJobInputs, GetSnarkProofPayload,
+    NextFriProverJobPayload, PeekableProofClient, ProofClient, SnarkProofInputs,
+    SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
@@ -66,8 +66,8 @@ impl SequencerProofClient {
 
 #[async_trait]
 impl ProofClient for SequencerProofClient {
-    fn sequencer_url(&self) -> &str {
-        self.url.as_str()
+    fn sequencer_url(&self) -> Url {
+        redact_auth_from_url(&self.url).into_owned()
     }
 
     /// Fetch the next batch to prove.
@@ -264,5 +264,27 @@ impl PeekableProofClient for SequencerProofClient {
                 "Unexpected status {resp:?} when peeking failed FRI proof for batch {batch_number}"
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sequencer_url_redacts_password() {
+        let url_with_password: Url = "http://user:password123@localhost:3124".parse().unwrap();
+        let client = SequencerProofClient::new(url_with_password.clone());
+
+        let redacted_url = client.sequencer_url();
+
+        // The returned URL should have password redacted
+        assert_eq!(redacted_url.password(), Some("****"));
+        // But the original should still have the password
+        assert_eq!(url_with_password.password(), Some("password123"));
+        // The rest of the URL should be the same
+        assert_eq!(redacted_url.host(), url_with_password.host());
+        assert_eq!(redacted_url.port(), url_with_password.port());
+        assert_eq!(redacted_url.username(), url_with_password.username());
     }
 }

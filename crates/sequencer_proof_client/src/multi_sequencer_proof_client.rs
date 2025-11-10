@@ -39,21 +39,21 @@ impl MultiSequencerProofClient {
             "At least one sequencer URL must be provided"
         );
 
-        tracing::info!(
-            "Initializing MultiSequencerProofClient with {} sequencer(s):",
-            urls.len()
-        );
-        for url in &urls {
-            tracing::info!("  - {}", url);
-        }
-
-        let clients = urls
+        let clients: Vec<std::sync::Arc<dyn ProofClient + Send + Sync>> = urls
             .into_iter()
             .map(|url| {
                 std::sync::Arc::new(SequencerProofClient::new(url))
                     as std::sync::Arc<dyn ProofClient + Send + Sync>
             })
             .collect();
+
+        tracing::info!(
+            "Initializing MultiSequencerProofClient with {} sequencer(s):",
+            clients.len()
+        );
+        for c in clients.iter() {
+            tracing::info!("  - {}", c.sequencer_url());
+        }
 
         Self {
             clients,
@@ -84,21 +84,21 @@ impl MultiSequencerProofClient {
             "At least one sequencer URL must be provided"
         );
 
-        tracing::info!(
-            "Initializing MultiSequencerProofClient with {} sequencer(s):",
-            urls.len()
-        );
-        for url in &urls {
-            tracing::info!("  - {}", url);
-        }
-
-        let clients = urls
+        let clients: Vec<std::sync::Arc<dyn ProofClient + Send + Sync>> = urls
             .into_iter()
             .map(|url| {
                 std::sync::Arc::new(SequencerProofClient::new_with_timeout(url, timeout))
                     as std::sync::Arc<dyn ProofClient + Send + Sync>
             })
             .collect();
+
+        tracing::info!(
+            "Initializing MultiSequencerProofClient with {} sequencer(s):",
+            clients.len()
+        );
+        for c in clients.iter() {
+            tracing::info!("  - {}", c.sequencer_url());
+        }
 
         Self {
             clients,
@@ -123,7 +123,7 @@ impl MultiSequencerProofClient {
 
 #[async_trait]
 impl ProofClient for MultiSequencerProofClient {
-    fn sequencer_url(&self) -> &str {
+    fn sequencer_url(&self) -> Url {
         self.current_client().sequencer_url()
     }
 
@@ -176,35 +176,44 @@ mod tests {
         assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
         assert_eq!(
             client.current_client().sequencer_url(),
-            "http://localhost:3124/"
+            "http://localhost:3124/".parse::<Url>().unwrap()
         );
 
         // Call next_client() - should return index 1 and advance to 1
         let returned_client = client.next_client();
-        assert_eq!(returned_client.sequencer_url(), "http://localhost:3125/");
+        assert_eq!(
+            returned_client.sequencer_url(),
+            "http://localhost:3125/".parse::<Url>().unwrap()
+        );
         assert_eq!(client.current_index.load(Ordering::SeqCst), 1);
         // Verify current_client() now returns the same as next_client() returned
         assert_eq!(
             client.current_client().sequencer_url(),
-            "http://localhost:3125/"
+            "http://localhost:3125/".parse::<Url>().unwrap()
         );
 
         // Call next_client() again - should return index 2 and advance to 2
         let returned_client = client.next_client();
-        assert_eq!(returned_client.sequencer_url(), "http://localhost:3126/");
+        assert_eq!(
+            returned_client.sequencer_url(),
+            "http://localhost:3126/".parse::<Url>().unwrap()
+        );
         assert_eq!(client.current_index.load(Ordering::SeqCst), 2);
         assert_eq!(
             client.current_client().sequencer_url(),
-            "http://localhost:3126/"
+            "http://localhost:3126/".parse::<Url>().unwrap()
         );
 
         // Call next_client() again - should wrap around to index 0
         let returned_client = client.next_client();
-        assert_eq!(returned_client.sequencer_url(), "http://localhost:3124/");
+        assert_eq!(
+            returned_client.sequencer_url(),
+            "http://localhost:3124/".parse::<Url>().unwrap()
+        );
         assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
         assert_eq!(
             client.current_client().sequencer_url(),
-            "http://localhost:3124/"
+            "http://localhost:3124/".parse::<Url>().unwrap()
         );
     }
 
@@ -240,12 +249,12 @@ mod tests {
         assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
         assert_eq!(
             client.current_client().sequencer_url(),
-            "http://localhost:3124/"
+            "http://localhost:3124/".parse::<Url>().unwrap()
         );
         assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
         assert_eq!(
             client.current_client().sequencer_url(),
-            "http://localhost:3124/"
+            "http://localhost:3124/".parse::<Url>().unwrap()
         );
         assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
     }
@@ -263,8 +272,8 @@ mod tests {
 
     #[async_trait]
     impl ProofClient for MockProofClient {
-        fn sequencer_url(&self) -> &str {
-            self.url.as_str()
+        fn sequencer_url(&self) -> Url {
+            self.url.clone()
         }
 
         async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
