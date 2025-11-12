@@ -67,7 +67,6 @@ impl MultiSequencerProofClient {
 
     /// Get the current client in round-robin fashion and advance the counter for next calls.
     fn current_client_and_increment(&self) -> &(dyn ProofClient + Send + Sync) {
-        // TODO: Use fetch_add
         let index = self
             .current_index
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current_index| {
