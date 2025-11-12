@@ -11,25 +11,12 @@ use crate::metrics::SEQUENCER_CLIENT_METRICS;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::fmt;
 use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
 mod metrics;
-
-/// Redacts authentication credentials from a URL for safe logging.
-/// Replaces the password with "****" if present.
-pub fn redact_auth_from_url(url: &Url) -> Cow<'_, Url> {
-    if url.password().is_some() {
-        let mut owned_url = url.clone();
-        if owned_url.set_password(Some("****")).is_ok() {
-            return Cow::Owned(owned_url);
-        }
-    }
-    Cow::Borrowed(url)
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
 pub struct L2BatchNumber(pub u32);
@@ -128,7 +115,7 @@ pub struct FriJobInputs {
 #[async_trait]
 pub trait ProofClient {
     /// Returns the sequencer URL for logging purposes
-    fn sequencer_url(&self) -> Url;
+    fn sequencer_url(&self) -> &Url;
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>>;
     async fn submit_fri_proof(
         &self,

@@ -1,10 +1,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 use async_trait::async_trait;
 use url::Url;
 
-use crate::{FriJobInputs, L2BatchNumber, ProofClient, SequencerProofClient, SnarkProofInputs};
+use crate::{FriJobInputs, L2BatchNumber, ProofClient, SnarkProofInputs};
 use zkos_wrapper::SnarkWrapperProof;
 
 /// A proof client that distributes requests across multiple sequencer URLs using round-robin.
@@ -12,16 +11,26 @@ use zkos_wrapper::SnarkWrapperProof;
 /// This client maintains a current index that cycles through the list of available clients,
 /// ensuring load distribution across multiple sequencers.
 pub struct MultiSequencerProofClient {
-    clients: Vec<std::sync::Arc<dyn ProofClient + Send + Sync>>,
+    clients: Vec<Box<dyn ProofClient + Send + Sync>>,
     current_index: AtomicUsize,
 }
 
 impl std::fmt::Debug for MultiSequencerProofClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MultiSequencerProofClient")
-            .field("clients_count", &self.clients.len())
-            .field("current_index", &self.current_index.load(Ordering::SeqCst))
-            .finish()
+        let mut debug = f.debug_struct("MultiSequencerProofClient");
+        debug.field(
+            "clients",
+            &format_args!(
+                "[{}]",
+                self.clients
+                    .iter()
+                    .map(|c| format!("ProofClient(\"{}\")", c.sequencer_url()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        );
+        debug.field("current_index", &self.current_index.load(Ordering::SeqCst));
+        debug.finish()
     }
 }
 
@@ -29,23 +38,12 @@ impl MultiSequencerProofClient {
     /// Create a new `MultiSequencerProofClient` with a list of sequencer URLs.
     ///
     /// # Arguments
-    /// * `urls` - A vector of sequencer URLs
-    ///
-    /// # Panics
-    /// Panics if the urls vector is empty
-    pub fn new(urls: Vec<Url>) -> Self {
-        assert!(
-            !urls.is_empty(),
-            "At least one sequencer URL must be provided"
+    /// * `clients` - A vector of sequencer client implementations
+    pub fn new(clients: Vec<Box<dyn ProofClient + Send + Sync>>) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            !clients.is_empty(),
+            "At least one sequencer client must be provided"
         );
-
-        let clients: Vec<std::sync::Arc<dyn ProofClient + Send + Sync>> = urls
-            .into_iter()
-            .map(|url| {
-                std::sync::Arc::new(SequencerProofClient::new(url))
-                    as std::sync::Arc<dyn ProofClient + Send + Sync>
-            })
-            .collect();
 
         tracing::info!(
             "Initializing MultiSequencerProofClient with {} sequencer(s):",
@@ -55,55 +53,10 @@ impl MultiSequencerProofClient {
             tracing::info!("  - {}", c.sequencer_url());
         }
 
-        Self {
+        Ok(Self {
             clients,
             current_index: AtomicUsize::new(0),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn with_clients(clients: Vec<std::sync::Arc<dyn ProofClient + Send + Sync>>) -> Self {
-        assert!(!clients.is_empty(), "At least one client must be provided");
-        Self {
-            clients,
-            current_index: AtomicUsize::new(0),
-        }
-    }
-
-    /// Create a new `MultiSequencerProofClient` with a list of sequencer URLs and custom timeout.
-    ///
-    /// # Arguments
-    /// * `urls` - A vector of sequencer URLs
-    /// * `timeout` - Optional timeout for HTTP requests
-    ///
-    /// # Panics
-    /// Panics if the urls vector is empty
-    pub fn new_with_timeout(urls: Vec<Url>, timeout: Option<Duration>) -> Self {
-        assert!(
-            !urls.is_empty(),
-            "At least one sequencer URL must be provided"
-        );
-
-        let clients: Vec<std::sync::Arc<dyn ProofClient + Send + Sync>> = urls
-            .into_iter()
-            .map(|url| {
-                std::sync::Arc::new(SequencerProofClient::new_with_timeout(url, timeout))
-                    as std::sync::Arc<dyn ProofClient + Send + Sync>
-            })
-            .collect();
-
-        tracing::info!(
-            "Initializing MultiSequencerProofClient with {} sequencer(s):",
-            clients.len()
-        );
-        for c in clients.iter() {
-            tracing::info!("  - {}", c.sequencer_url());
-        }
-
-        Self {
-            clients,
-            current_index: AtomicUsize::new(0),
-        }
+        })
     }
 
     /// Get the current client without advancing the counter.
@@ -112,23 +65,27 @@ impl MultiSequencerProofClient {
         &*self.clients[index]
     }
 
-    /// Get the next client in round-robin fashion (advances the counter).
-    fn next_client(&self) -> &(dyn ProofClient + Send + Sync) {
-        let index = self.current_index.load(Ordering::SeqCst);
-        let next_index = (index + 1) % self.clients.len();
-        self.current_index.store(next_index, Ordering::SeqCst);
-        &*self.clients[next_index]
+    /// Get the current client in round-robin fashion and advance the counter for next calls.
+    fn current_client_and_increment(&self) -> &(dyn ProofClient + Send + Sync) {
+        // TODO: Use fetch_add
+        let index = self
+            .current_index
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current_index| {
+                Some((current_index + 1) % self.clients.len())
+            })
+            .expect("failed to update current index, should never happen");
+        &*self.clients[index]
     }
 }
 
 #[async_trait]
 impl ProofClient for MultiSequencerProofClient {
-    fn sequencer_url(&self) -> Url {
+    fn sequencer_url(&self) -> &Url {
         self.current_client().sequencer_url()
     }
 
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
-        self.next_client().pick_fri_job().await
+        self.current_client().pick_fri_job().await
     }
 
     async fn submit_fri_proof(
@@ -137,13 +94,13 @@ impl ProofClient for MultiSequencerProofClient {
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()> {
-        self.current_client()
+        self.current_client_and_increment()
             .submit_fri_proof(batch_number, vk_hash, proof)
             .await
     }
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
-        self.next_client().pick_snark_job().await
+        self.current_client().pick_snark_job().await
     }
 
     async fn submit_snark_proof(
@@ -153,7 +110,7 @@ impl ProofClient for MultiSequencerProofClient {
         vk_hash: String,
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
-        self.current_client()
+        self.current_client_and_increment()
             .submit_snark_proof(from_batch_number, to_batch_number, vk_hash, proof)
             .await
     }
@@ -161,103 +118,9 @@ impl ProofClient for MultiSequencerProofClient {
 
 #[cfg(test)]
 mod tests {
+    use crate::SequencerProofClient;
+
     use super::*;
-
-    #[test]
-    fn test_next_client_advances_and_returns_correct_index() {
-        let urls = vec![
-            "http://localhost:3124".parse().unwrap(),
-            "http://localhost:3125".parse().unwrap(),
-            "http://localhost:3126".parse().unwrap(),
-        ];
-        let client = MultiSequencerProofClient::new(urls);
-
-        // Initially at index 0
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            client.current_client().sequencer_url(),
-            "http://localhost:3124/".parse::<Url>().unwrap()
-        );
-
-        // Call next_client() - should return index 1 and advance to 1
-        let returned_client = client.next_client();
-        assert_eq!(
-            returned_client.sequencer_url(),
-            "http://localhost:3125/".parse::<Url>().unwrap()
-        );
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 1);
-        // Verify current_client() now returns the same as next_client() returned
-        assert_eq!(
-            client.current_client().sequencer_url(),
-            "http://localhost:3125/".parse::<Url>().unwrap()
-        );
-
-        // Call next_client() again - should return index 2 and advance to 2
-        let returned_client = client.next_client();
-        assert_eq!(
-            returned_client.sequencer_url(),
-            "http://localhost:3126/".parse::<Url>().unwrap()
-        );
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 2);
-        assert_eq!(
-            client.current_client().sequencer_url(),
-            "http://localhost:3126/".parse::<Url>().unwrap()
-        );
-
-        // Call next_client() again - should wrap around to index 0
-        let returned_client = client.next_client();
-        assert_eq!(
-            returned_client.sequencer_url(),
-            "http://localhost:3124/".parse::<Url>().unwrap()
-        );
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            client.current_client().sequencer_url(),
-            "http://localhost:3124/".parse::<Url>().unwrap()
-        );
-    }
-
-    #[test]
-    fn test_sequencer_url_matches_current_client_after_next_client() {
-        let urls = vec![
-            "http://sequencer-1:3124".parse().unwrap(),
-            "http://sequencer-2:3124".parse().unwrap(),
-        ];
-        let client = MultiSequencerProofClient::new(urls);
-
-        // After calling next_client(), sequencer_url() should match the returned client
-        for _ in 0..5 {
-            let returned_client = client.next_client();
-            let returned_url = returned_client.sequencer_url();
-            let current_url = client.sequencer_url();
-            assert_eq!(
-                returned_url, current_url,
-                "sequencer_url() should match the client returned by next_client()"
-            );
-        }
-    }
-
-    #[test]
-    fn test_current_client_does_not_advance() {
-        let urls = vec![
-            "http://localhost:3124".parse().unwrap(),
-            "http://localhost:3125".parse().unwrap(),
-        ];
-        let client = MultiSequencerProofClient::new(urls);
-
-        // Call current_client() multiple times - index should not change
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            client.current_client().sequencer_url(),
-            "http://localhost:3124/".parse::<Url>().unwrap()
-        );
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            client.current_client().sequencer_url(),
-            "http://localhost:3124/".parse::<Url>().unwrap()
-        );
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
-    }
 
     // Mock client for testing pick and submit sequence
     struct MockProofClient {
@@ -268,12 +131,20 @@ mod tests {
         fn new(url: Url) -> Self {
             Self { url }
         }
+
+        fn new_clients(urls: Vec<Url>) -> Vec<Box<dyn ProofClient + Send + Sync>> {
+            urls.into_iter()
+                .map(|url| {
+                    Box::new(MockProofClient::new(url)) as Box<dyn ProofClient + Send + Sync>
+                })
+                .collect()
+        }
     }
 
     #[async_trait]
     impl ProofClient for MockProofClient {
-        fn sequencer_url(&self) -> Url {
-            self.url.clone()
+        fn sequencer_url(&self) -> &Url {
+            &self.url
         }
 
         async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
@@ -283,17 +154,11 @@ mod tests {
         async fn submit_fri_proof(
             &self,
             _batch_number: u32,
+            // Used as url for testing purposes, no VK here
             vk_hash: String,
             _proof: String,
         ) -> anyhow::Result<()> {
-            // Verify that the vk_hash matches this client's URL
-            assert_eq!(
-                vk_hash,
-                self.url.to_string(),
-                "Expected vk_hash to be {}, but got {}",
-                self.url,
-                vk_hash
-            );
+            assert_eq!(vk_hash, self.url.to_string());
             Ok(())
         }
 
@@ -305,68 +170,72 @@ mod tests {
             &self,
             _from_batch_number: L2BatchNumber,
             _to_batch_number: L2BatchNumber,
+            // Used as url for testing purposes, no VK here
             vk_hash: String,
             _proof: SnarkWrapperProof,
         ) -> anyhow::Result<()> {
-            // Verify that the vk_hash matches this client's URL
-            assert_eq!(
-                vk_hash,
-                self.url.to_string(),
-                "Expected vk_hash to be {}, but got {}",
-                self.url,
-                vk_hash
-            );
+            assert_eq!(vk_hash, self.url.to_string());
             Ok(())
+        }
+    }
+
+    #[test]
+    fn test_client_advances_and_returns_correct_index() {
+        let urls = vec![
+            "http://client-1.com".parse().unwrap(),
+            "http://client-2.com".parse().unwrap(),
+            "http://client-3.com".parse().unwrap(),
+        ];
+        let clients = SequencerProofClient::new_clients(urls.clone(), None).unwrap();
+        let multi_client = MultiSequencerProofClient::new(clients).unwrap();
+
+        // Check that current_client_and_increment() returns the correct client and advances the index, including wrapping around
+        // When 3 is hit, we should be back to 0
+        for i in 0..3 {
+            let current_client = multi_client.current_client();
+            assert_eq!(current_client.sequencer_url(), &urls[i]);
+            let still_current_client = multi_client.current_client_and_increment();
+            assert_eq!(still_current_client.sequencer_url(), &urls[i]);
+            let next_client = multi_client.current_client();
+            let expected_next_index = (i + 1) % urls.len();
+            assert_eq!(next_client.sequencer_url(), &urls[expected_next_index]);
         }
     }
 
     // Test that FRI pick and submit happen to the same client via round-robin
     #[tokio::test]
     async fn test_fri_pick_and_submit_use_same_client() {
-        let url1: Url = "http://client-1:3124".parse().unwrap();
-        let url2: Url = "http://client-2:3124".parse().unwrap();
-        let url3: Url = "http://client-3:3124".parse().unwrap();
+        let urls = vec![
+            "http://client-1.com".parse().unwrap(),
+            "http://client-2.com".parse().unwrap(),
+            "http://client-3.com".parse().unwrap(),
+        ];
 
-        let mock1 = std::sync::Arc::new(MockProofClient::new(url1.clone()));
-        let mock2 = std::sync::Arc::new(MockProofClient::new(url2.clone()));
-        let mock3 = std::sync::Arc::new(MockProofClient::new(url3.clone()));
+        let multi_client =
+            MultiSequencerProofClient::new(MockProofClient::new_clients(urls.clone())).unwrap();
 
-        let client = MultiSequencerProofClient::with_clients(vec![mock1, mock2, mock3]);
-
-        let _ = client.pick_fri_job().await;
-        let _ = client
-            .submit_fri_proof(1, url2.to_string(), "proof".to_string())
-            .await;
-
-        let _ = client.pick_fri_job().await;
-        let _ = client
-            .submit_fri_proof(2, url3.to_string(), "proof".to_string())
-            .await;
-
-        let _ = client.pick_fri_job().await;
-        let _ = client
-            .submit_fri_proof(3, url1.to_string(), "proof".to_string())
-            .await;
-
-        // Verify the MultiSequencerProofClient internal state
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
-        // Do one more pick to verify we're back at the beginning
-        let _ = client.pick_fri_job().await;
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 1);
+        for i in 0..3 {
+            multi_client.pick_fri_job().await.unwrap();
+            assert_eq!(multi_client.sequencer_url(), &urls[i]);
+            multi_client
+                .submit_fri_proof(1, urls[i].to_string(), "proof".to_string())
+                .await
+                .unwrap();
+            assert_eq!(multi_client.sequencer_url(), &urls[(i + 1) % urls.len()]);
+        }
     }
 
     // Test that SNARK pick and submit happen to the same client via round-robin
     #[tokio::test]
     async fn test_snark_pick_and_submit_use_same_client() {
-        let url1: Url = "http://client-1:3124".parse().unwrap();
-        let url2: Url = "http://client-2:3124".parse().unwrap();
-        let url3: Url = "http://client-3:3124".parse().unwrap();
+        let urls = vec![
+            "http://client-1.com".parse().unwrap(),
+            "http://client-2.com".parse().unwrap(),
+            "http://client-3.com".parse().unwrap(),
+        ];
 
-        let mock1 = std::sync::Arc::new(MockProofClient::new(url1.clone()));
-        let mock2 = std::sync::Arc::new(MockProofClient::new(url2.clone()));
-        let mock3 = std::sync::Arc::new(MockProofClient::new(url3.clone()));
-
-        let client = MultiSequencerProofClient::with_clients(vec![mock1, mock2, mock3]);
+        let multi_client =
+            MultiSequencerProofClient::new(MockProofClient::new_clients(urls.clone())).unwrap();
 
         // Create a minimal dummy proof for testing - the mock client doesn't actually use it
         let dummy_proof: SnarkWrapperProof = serde_json::from_str(
@@ -400,40 +269,19 @@ mod tests {
             }"#
         ).unwrap();
 
-        let _ = client.pick_snark_job().await;
-        let _ = client
-            .submit_snark_proof(
-                L2BatchNumber(1),
-                L2BatchNumber(2),
-                url2.to_string(),
-                dummy_proof.clone(),
-            )
-            .await;
-
-        let _ = client.pick_snark_job().await;
-        let _ = client
-            .submit_snark_proof(
-                L2BatchNumber(3),
-                L2BatchNumber(4),
-                url3.to_string(),
-                dummy_proof.clone(),
-            )
-            .await;
-
-        let _ = client.pick_snark_job().await;
-        let _ = client
-            .submit_snark_proof(
-                L2BatchNumber(5),
-                L2BatchNumber(6),
-                url1.to_string(),
-                dummy_proof.clone(),
-            )
-            .await;
-
-        // Verify the MultiSequencerProofClient internal state
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 0);
-        // Do one more pick to verify we're back at the beginning
-        let _ = client.pick_snark_job().await;
-        assert_eq!(client.current_index.load(Ordering::SeqCst), 1);
+        for i in 0..3 {
+            multi_client.pick_snark_job().await.unwrap();
+            assert_eq!(multi_client.sequencer_url(), &urls[i]);
+            multi_client
+                .submit_snark_proof(
+                    L2BatchNumber(1),
+                    L2BatchNumber(2),
+                    urls[i].to_string(),
+                    dummy_proof.clone(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(multi_client.sequencer_url(), &urls[(i + 1) % urls.len()]);
+        }
     }
 }
