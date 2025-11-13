@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.5.1...v0.6.0) (2025-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* Poll a list of sequencers in provers ([#97](https://github.com/matter-labs/zksync-airbender-prover/issues/97))
+
+### Features
+
+* Poll a list of sequencers in provers ([#97](https://github.com/matter-labs/zksync-airbender-prover/issues/97)) ([36b589f](https://github.com/matter-labs/zksync-airbender-prover/commit/36b589f8b041bb82dd86719e626fedd3b9f8c912))
+
+
+### Bug Fixes
+
+* Refactor multi_sequencer_proof_client implementation ([#102](https://github.com/matter-labs/zksync-airbender-prover/issues/102)) ([f8e5aa4](https://github.com/matter-labs/zksync-airbender-prover/commit/f8e5aa49b6edb056828eca2b52a6b1cd949f952d))
+
 ## [0.5.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.5.0...v0.5.1) (2025-11-06)
 
 
