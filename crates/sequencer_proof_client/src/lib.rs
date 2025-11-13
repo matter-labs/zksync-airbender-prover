@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
@@ -114,7 +115,7 @@ pub struct FriJobInputs {
 #[async_trait]
 pub trait ProofClient {
     /// Returns the sequencer URL for logging purposes
-    fn sequencer_url(&self) -> &str;
+    fn sequencer_url(&self) -> &Url;
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>>;
     async fn submit_fri_proof(
         &self,

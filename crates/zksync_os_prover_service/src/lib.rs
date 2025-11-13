@@ -6,10 +6,11 @@ use std::{
     time::Instant,
 };
 
+use anyhow::Context;
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
-use reqwest::Url;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use url::Url;
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
 use zksync_airbender_cli::prover_utils::load_binary_from_path;
@@ -20,7 +21,7 @@ use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 #[cfg(feature = "gpu")]
 use zksync_os_snark_prover::compute_compression_vk;
-use zksync_sequencer_proof_client::MultiSequencerProofClient;
+use zksync_sequencer_proof_client::{MultiSequencerProofClient, SequencerProofClient};
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -66,8 +67,11 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
-pub async fn run(args: Args) {
-    let client = MultiSequencerProofClient::new(args.sequencer_urls);
+pub async fn run(args: Args) -> anyhow::Result<()> {
+    let clients = SequencerProofClient::new_clients(args.sequencer_urls, None)
+        .context("failed to create sequencer proof clients")?;
+    let client = MultiSequencerProofClient::new(clients)
+        .context("failed to create multi sequencer proof client")?;
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -175,4 +179,5 @@ pub async fn run(args: Args) {
             }
         }
     }
+    Ok(())
 }

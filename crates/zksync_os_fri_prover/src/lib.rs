@@ -1,20 +1,23 @@
 use std::{
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
+use anyhow::Context as _;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
-use reqwest::Url;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use url::Url;
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{FriJobInputs, MultiSequencerProofClient, ProofClient};
+use zksync_sequencer_proof_client::{
+    FriJobInputs, MultiSequencerProofClient, ProofClient, SequencerProofClient,
+};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -103,12 +106,15 @@ pub fn create_proof(
     ProgramProof::from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
 }
 
-pub async fn run(args: Args) {
-    use std::time::Duration;
-
+pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.request_timeout_secs);
 
-    let client = MultiSequencerProofClient::new_with_timeout(args.sequencer_urls, Some(timeout));
+    let clients = SequencerProofClient::new_clients(args.sequencer_urls, Some(timeout))
+        .context("failed to create sequencer proof clients")?;
+
+    let multi_client = MultiSequencerProofClient::new(clients)
+        .context("failed to create multi sequencer proof client")?;
+    tracing::debug!("Using sequencer client {:#?}", multi_client);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -140,10 +146,10 @@ pub async fn run(args: Args) {
     let mut proof_count = 0;
 
     loop {
-        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
+        tracing::debug!("Polling sequencer: {}", multi_client.sequencer_url());
 
         let proof_generated = run_inner(
-            &client,
+            &multi_client,
             &binary,
             args.circuit_limit,
             &mut gpu_state,
@@ -162,7 +168,7 @@ pub async fn run(args: Args) {
                     tracing::info!(
                         "Reached maximum iterations ({max_proofs_generated}), exiting...",
                     );
-                    return;
+                    return Ok(());
                 }
             }
         } else {
@@ -173,8 +179,8 @@ pub async fn run(args: Args) {
     }
 }
 
-pub async fn run_inner<P: ProofClient>(
-    client: &P,
+pub async fn run_inner(
+    client: &dyn ProofClient,
     binary: &Vec<u32>,
     circuit_limit: usize,
     #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,

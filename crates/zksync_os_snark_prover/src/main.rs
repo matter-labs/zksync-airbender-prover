@@ -1,12 +1,13 @@
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
+use url::Url;
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
+use zksync_sequencer_proof_client::{MultiSequencerProofClient, ProofClient, SequencerProofClient};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -111,11 +112,12 @@ fn main() {
                 });
 
                 let timeout = Duration::from_secs(request_timeout_secs);
-                let client =
-                    zksync_sequencer_proof_client::MultiSequencerProofClient::new_with_timeout(
-                        sequencer_urls,
-                        Some(timeout),
-                    );
+
+                let clients: Vec<Box<dyn ProofClient + Send + Sync>> =
+                    SequencerProofClient::new_clients(sequencer_urls, Some(timeout))
+                        .expect("failed to create sequencer proof clients");
+                let multi_client = MultiSequencerProofClient::new(clients)
+                    .expect("failed to create multi sequencer proof client");
                 tracing::info!(
                     "Starting zksync_os_snark_prover with request timeout of {}s",
                     request_timeout_secs
@@ -124,7 +126,7 @@ fn main() {
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
-                        &client,
+                        &multi_client,
                         output_dir,
                         trusted_setup_file,
                         iterations,

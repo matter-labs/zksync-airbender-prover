@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use reqwest::Url;
 use tracing_subscriber::{fmt, EnvFilter};
+use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
     FriJobInputs, L2BatchNumber, ProofClient, SequencerProofClient,
@@ -41,11 +41,12 @@ impl Cli {
     }
 
     /// Return sequencer client from CLI params. To be called only after `Cli::init()`.
-    fn sequencer_client(&self) -> SequencerProofClient {
+    fn sequencer_client(&self) -> anyhow::Result<SequencerProofClient> {
         SequencerProofClient::new(
             self.url
                 .clone()
                 .expect("called sequencer_client() before init()"),
+            None,
         )
     }
 }
@@ -124,7 +125,7 @@ fn init_tracing(verbosity: u8) {
 async fn main() -> Result<()> {
     let cli = Cli::init()?;
 
-    let client = cli.sequencer_client();
+    let client = cli.sequencer_client()?;
 
     let url = client.sequencer_url();
 
