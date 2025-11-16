@@ -46,6 +46,7 @@ impl Cli {
             self.url
                 .clone()
                 .expect("called sequencer_client() before init()"),
+            "cli_client".to_string(),
             None,
         )
     }

@@ -20,14 +20,12 @@ use zkos_wrapper::SnarkWrapperProof;
 // TODO!: Refactor all these strings from string concat to url joining
 const SEQUENCER_PROVER_API_PATH: &str = "prover-jobs/v1";
 
-//TODO!: To be refactored into pod name.
-const PROVER_ID: &str = "unknown_prover";
-
 #[derive(Debug)]
 pub struct SequencerProofClient {
     client: reqwest::Client,
     url: Url,
     sanitized_url: Url,
+    prover_name: String,
 }
 
 impl SequencerProofClient {
@@ -35,11 +33,12 @@ impl SequencerProofClient {
     ///
     /// # Arguments
     /// * `url` - The URL of the sequencer server
+    /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     ///
     /// # Errors
     /// * if building the reqwest client fails
-    pub fn new(url: Url, timeout: Option<Duration>) -> anyhow::Result<Self> {
+    pub fn new(url: Url, prover_name: String, timeout: Option<Duration>) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(timeout.unwrap_or(Duration::from_secs(2)))
             .build()
@@ -51,6 +50,7 @@ impl SequencerProofClient {
             client,
             url,
             sanitized_url,
+            prover_name,
         })
     }
 
@@ -58,17 +58,19 @@ impl SequencerProofClient {
     ///
     /// # Arguments
     /// * `urls` - A vector of sequencer URLs
+    /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     ///
     /// # Errors
     /// * if creating any of the clients fails
     pub fn new_clients(
         urls: Vec<Url>,
+        prover_name: String,
         timeout: Option<Duration>,
     ) -> anyhow::Result<Vec<Box<dyn ProofClient + Send + Sync>>> {
         let mut clients: Vec<Box<dyn ProofClient + Send + Sync>> = vec![];
         for url in urls {
-            let client = SequencerProofClient::new(url.clone(), timeout)
+            let client = SequencerProofClient::new(url.clone(), prover_name.clone(), timeout)
                 .with_context(|| format!("failed to create sequencer with url {url}"))?;
             clients.push(Box::new(client) as Box<dyn ProofClient + Send + Sync>);
         }
@@ -121,7 +123,7 @@ impl ProofClient for SequencerProofClient {
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/FRI/pick?id={PROVER_ID}"
+            "{SEQUENCER_PROVER_API_PATH}/FRI/pick?id={}", self.prover_name
         ))?;
 
         let started_at = Instant::now();
@@ -159,7 +161,7 @@ impl ProofClient for SequencerProofClient {
         proof: String,
     ) -> anyhow::Result<()> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/FRI/submit?id={PROVER_ID}"
+            "{SEQUENCER_PROVER_API_PATH}/FRI/submit?id={}", self.prover_name
         ))?;
 
         let payload = SubmitFriProofPayload {
@@ -187,7 +189,7 @@ impl ProofClient for SequencerProofClient {
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/SNARK/pick?id={PROVER_ID}"
+            "{SEQUENCER_PROVER_API_PATH}/SNARK/pick?id={}", self.prover_name
         ))?;
 
         let started_at = Instant::now();
@@ -219,7 +221,7 @@ impl ProofClient for SequencerProofClient {
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/SNARK/submit?id={PROVER_ID}"
+            "{SEQUENCER_PROVER_API_PATH}/SNARK/submit?id={}", self.prover_name
         ))?;
 
         let started_at = Instant::now();
@@ -325,7 +327,7 @@ mod tests {
         expected_url.set_password(Some("******")).unwrap();
 
         let client =
-            SequencerProofClient::new(original_url.clone(), None).expect("failed to create client");
+            SequencerProofClient::new(original_url.clone(), "test_prover".to_string(), None).expect("failed to create client");
 
         assert_eq!(&expected_url, &client.sanitized_url);
         check_url(&expected_url, &client.sequencer_url());

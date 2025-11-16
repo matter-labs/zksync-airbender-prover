@@ -68,7 +68,7 @@ pub fn init_tracing() {
 }
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
-    let clients = SequencerProofClient::new_clients(args.sequencer_urls, None)
+    let clients = SequencerProofClient::new_clients(args.sequencer_urls, "prover_service".to_string(), None)
         .context("failed to create sequencer proof clients")?;
     let client = MultiSequencerProofClient::new(clients)
         .context("failed to create multi sequencer proof client")?;

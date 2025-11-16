@@ -185,7 +185,7 @@ mod tests {
             "http://client-2.com".parse().unwrap(),
             "http://client-3.com".parse().unwrap(),
         ];
-        let clients = SequencerProofClient::new_clients(urls.clone(), None).unwrap();
+        let clients = SequencerProofClient::new_clients(urls.clone(), "test_prover".to_string(), None).unwrap();
         let multi_client = MultiSequencerProofClient::new(clients).unwrap();
 
         // Check that current_client_and_increment() returns the correct client and advances the index, including wrapping around

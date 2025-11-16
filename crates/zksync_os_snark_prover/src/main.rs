@@ -59,6 +59,9 @@ enum Commands {
         /// Disable ZK for SNARK proofs
         #[arg(long, default_value_t = false)]
         disable_zk: bool,
+        /// Name of the prover for identification in the sequencer
+        #[arg(long, default_value = "unknown_prover")]
+        prover_name: String,
     },
 }
 
@@ -93,6 +96,7 @@ fn main() {
             prometheus_port,
             request_timeout_secs,
             disable_zk,
+            prover_name,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -114,7 +118,7 @@ fn main() {
                 let timeout = Duration::from_secs(request_timeout_secs);
 
                 let clients: Vec<Box<dyn ProofClient + Send + Sync>> =
-                    SequencerProofClient::new_clients(sequencer_urls, Some(timeout))
+                    SequencerProofClient::new_clients(sequencer_urls, prover_name, Some(timeout))
                         .expect("failed to create sequencer proof clients");
                 let multi_client = MultiSequencerProofClient::new(clients)
                     .expect("failed to create multi sequencer proof client");
