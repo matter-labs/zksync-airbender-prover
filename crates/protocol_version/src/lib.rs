@@ -79,6 +79,14 @@ pub struct SupportedProtocolVersions {
 }
 
 impl Default for SupportedProtocolVersions {
+    /// Construct a `SupportedProtocolVersions` containing the single current default protocol version (V5).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let supported = SupportedProtocolVersions::default();
+    /// assert_eq!(supported.versions.len(), 1);
+    /// ```
     fn default() -> Self {
         Self { versions: vec![V5] }
     }
