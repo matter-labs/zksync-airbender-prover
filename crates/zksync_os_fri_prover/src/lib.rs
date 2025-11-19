@@ -64,6 +64,10 @@ pub struct Args {
     /// Timeout for HTTP requests to sequencer in seconds. If no response is received within this time, the prover will exit.
     #[arg(long, default_value = "2")]
     pub request_timeout_secs: u64,
+
+    /// Name of the prover for identification in the sequencer's prover api
+    #[arg(long, default_value = "unknown_prover")]
+    pub prover_name: String,
 }
 
 pub fn init_tracing() {
@@ -109,8 +113,9 @@ pub fn create_proof(
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.request_timeout_secs);
 
-    let clients = SequencerProofClient::new_clients(args.sequencer_urls, Some(timeout))
-        .context("failed to create sequencer proof clients")?;
+    let clients =
+        SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
+            .context("failed to create sequencer proof clients")?;
 
     let multi_client = MultiSequencerProofClient::new(clients)
         .context("failed to create multi sequencer proof client")?;
