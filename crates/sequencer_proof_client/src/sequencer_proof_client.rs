@@ -123,7 +123,8 @@ impl ProofClient for SequencerProofClient {
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/FRI/pick?id={}", self.prover_name
+            "{SEQUENCER_PROVER_API_PATH}/FRI/pick?id={}",
+            self.prover_name
         ))?;
 
         let started_at = Instant::now();
@@ -161,7 +162,8 @@ impl ProofClient for SequencerProofClient {
         proof: String,
     ) -> anyhow::Result<()> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/FRI/submit?id={}", self.prover_name
+            "{SEQUENCER_PROVER_API_PATH}/FRI/submit?id={}",
+            self.prover_name
         ))?;
 
         let payload = SubmitFriProofPayload {
@@ -189,7 +191,8 @@ impl ProofClient for SequencerProofClient {
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/SNARK/pick?id={}", self.prover_name
+            "{SEQUENCER_PROVER_API_PATH}/SNARK/pick?id={}",
+            self.prover_name
         ))?;
 
         let started_at = Instant::now();
@@ -221,7 +224,8 @@ impl ProofClient for SequencerProofClient {
         proof: SnarkWrapperProof,
     ) -> anyhow::Result<()> {
         let url = self.url.join(&format!(
-            "{SEQUENCER_PROVER_API_PATH}/SNARK/submit?id={}", self.prover_name
+            "{SEQUENCER_PROVER_API_PATH}/SNARK/submit?id={}",
+            self.prover_name
         ))?;
 
         let started_at = Instant::now();
@@ -327,7 +331,8 @@ mod tests {
         expected_url.set_password(Some("******")).unwrap();
 
         let client =
-            SequencerProofClient::new(original_url.clone(), "test_prover".to_string(), None).expect("failed to create client");
+            SequencerProofClient::new(original_url.clone(), "test_prover".to_string(), None)
+                .expect("failed to create client");
 
         assert_eq!(&expected_url, &client.sanitized_url);
         check_url(&expected_url, &client.sequencer_url());

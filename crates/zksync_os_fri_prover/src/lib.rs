@@ -113,8 +113,9 @@ pub fn create_proof(
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.request_timeout_secs);
 
-    let clients = SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
-        .context("failed to create sequencer proof clients")?;
+    let clients =
+        SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
+            .context("failed to create sequencer proof clients")?;
 
     let multi_client = MultiSequencerProofClient::new(clients)
         .context("failed to create multi sequencer proof client")?;
