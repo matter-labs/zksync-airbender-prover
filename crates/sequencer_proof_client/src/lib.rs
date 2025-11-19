@@ -113,7 +113,7 @@ pub struct FriJobInputs {
 }
 
 #[async_trait]
-pub trait ProofClient {
+pub trait ProofClient: Send + Sync {
     /// Returns the sequencer URL for logging purposes
     fn sequencer_url(&self) -> &Url;
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>>;
