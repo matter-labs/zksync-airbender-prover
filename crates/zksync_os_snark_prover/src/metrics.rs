@@ -52,20 +52,6 @@ pub(crate) struct SnarkProofTimeStats {
     pub time_taken_snark: Duration,
 }
 
-impl std::fmt::Display for SnarkProofTimeStats {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Merge FRI: {:?}\n", self.time_taken_merge_fri)?;
-        write!(f, "Final Proof: {:?}\n", self.time_taken_final_proof)?;
-        write!(f, "SNARK: {:?}\n", self.time_taken_snark)?;
-        write!(
-            f,
-            "Total: {:?}\n",
-            self.time_taken_merge_fri + self.time_taken_final_proof + self.time_taken_snark
-        )?;
-        Ok(())
-    }
-}
-
 impl SnarkProofTimeStats {
     pub fn new() -> Self {
         Self {
