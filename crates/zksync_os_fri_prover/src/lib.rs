@@ -149,7 +149,11 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     );
 
     let mut proof_count = 0;
+    
     let mut retry_count = 0;
+    let retry_interval = Duration::from_millis(100);
+    // If no proof is generated for 5 minutes, log a message
+    let retry_log_interval = Duration::from_secs(5 * 60);
 
     loop {
         tracing::debug!("Polling sequencer: {}", multi_client.sequencer_url());
@@ -182,11 +186,11 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             // If no task was found, wait before trying again
             retry_count += 1;
 
-            if Duration::from_millis(retry_count * 100) >= Duration::from_secs(5 * 60) {
+            if retry_count * retry_interval >= retry_log_interval {
                 tracing::info!("No pending batches to prove from sequencer for 5 minutes, retried for {} times", retry_count);
                 retry_count = 0;
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(retry_interval).await;
         }
     }
 }
