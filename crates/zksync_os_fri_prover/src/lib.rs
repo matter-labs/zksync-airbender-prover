@@ -149,6 +149,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     );
 
     let mut proof_count = 0;
+    let mut retry_count = 0;
 
     loop {
         tracing::debug!("Polling sequencer: {}", multi_client.sequencer_url());
@@ -176,9 +177,15 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     return Ok(());
                 }
             }
+            retry_count = 0;
         } else {
             // If no task was found, wait before trying again
-            tracing::info!("No pending batches to prove from sequencer, retrying in 100ms...");
+            retry_count += 1;
+
+            if Duration::from_millis(retry_count * 100) >= Duration::from_secs(5 * 60) {
+                tracing::info!("No pending batches to prove from sequencer for 5 minutes, retried for {} times", retry_count);
+                retry_count = 0;
+            }
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
@@ -278,19 +285,20 @@ pub async fn run_inner(
         .latest_proven_batch
         .set(batch_number as i64);
 
-    FRI_PROVER_METRICS
-        .time_taken
-        .observe(started_at.elapsed().as_secs_f64());
+    let proof_time = started_at.elapsed().as_secs_f64();
+
+    FRI_PROVER_METRICS.time_taken.observe(proof_time);
 
     match client
         .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
         .await
     {
         Ok(_) => tracing::info!(
-            "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}",
+            "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}, generated in {} seconds",
             batch_number,
             vk_hash,
-            client.sequencer_url()
+            client.sequencer_url(),
+            proof_time
         ),
         Err(err) => {
             // Check if the error is a timeout error

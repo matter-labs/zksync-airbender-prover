@@ -1,6 +1,6 @@
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, time::Duration};
 
-use tokio::sync::watch;
+use tokio::{sync::watch, time::Instant};
 use vise::{Counter, Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
 
@@ -45,3 +45,59 @@ pub struct SnarkProverMetrics {
 
 #[vise::register]
 pub(crate) static SNARK_PROVER_METRICS: vise::Global<SnarkProverMetrics> = vise::Global::new();
+
+pub(crate) struct SnarkProofTimeStats {
+    pub time_taken_merge_fri: Duration,
+    pub time_taken_final_proof: Duration,
+    pub time_taken_snark: Duration,
+}
+
+impl std::fmt::Display for SnarkProofTimeStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Merge FRI: {:?}\n", self.time_taken_merge_fri)?;
+        write!(f, "Final Proof: {:?}\n", self.time_taken_final_proof)?;
+        write!(f, "SNARK: {:?}\n", self.time_taken_snark)?;
+        write!(
+            f,
+            "Total: {:?}\n",
+            self.time_taken_merge_fri + self.time_taken_final_proof + self.time_taken_snark
+        )?;
+        Ok(())
+    }
+}
+
+impl SnarkProofTimeStats {
+    pub fn new() -> Self {
+        Self {
+            time_taken_merge_fri: Duration::from_secs(0),
+            time_taken_final_proof: Duration::from_secs(0),
+            time_taken_snark: Duration::from_secs(0),
+        }
+    }
+
+    pub fn measure_step<F, T>(target: &mut Duration, step: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let start = Instant::now();
+        let result = step();
+        *target += start.elapsed();
+        result
+    }
+
+    pub fn observe(&self) {
+        SNARK_PROVER_METRICS
+            .time_taken_merge_fri
+            .observe(self.time_taken_merge_fri.as_secs_f64());
+        SNARK_PROVER_METRICS
+            .time_taken_final_proof
+            .observe(self.time_taken_final_proof.as_secs_f64());
+        SNARK_PROVER_METRICS
+            .time_taken_snark
+            .observe(self.time_taken_snark.as_secs_f64());
+        SNARK_PROVER_METRICS.time_taken_full.observe(
+            (self.time_taken_merge_fri + self.time_taken_final_proof + self.time_taken_snark)
+                .as_secs_f64(),
+        );
+    }
+}
