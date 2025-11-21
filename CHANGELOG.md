@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.6.0...v0.6.1) (2025-11-21)
+
+
+### Features
+
+* allow passing prover_name in params ([#103](https://github.com/matter-labs/zksync-airbender-prover/issues/103)) ([32f084b](https://github.com/matter-labs/zksync-airbender-prover/commit/32f084bf8a140d14c02fe8e1a5fbcd5df69587be))
+
+
+### Bug Fixes
+
+* update VKs with zksync-os v0.2.4 ([#108](https://github.com/matter-labs/zksync-airbender-prover/issues/108)) ([5a6e9b2](https://github.com/matter-labs/zksync-airbender-prover/commit/5a6e9b23661388a06b60fcc41d183b38539d3858))
+
 ## [0.6.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.5.1...v0.6.0) (2025-11-19)
 
 
