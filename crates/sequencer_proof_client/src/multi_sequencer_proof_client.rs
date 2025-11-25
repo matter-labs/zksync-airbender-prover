@@ -215,14 +215,14 @@ mod tests {
             for (i, url) in urls.iter().enumerate() {
                 assert_eq!(
                     multi_client.sequencer_url(),
-                    url,
+                    url.clone(),
                     "cycle {cycle}, index {i}",
                 );
                 multi_client.advance_index();
             }
         }
         // Should be back at start
-        assert_eq!(multi_client.sequencer_url(), &urls[0]);
+        assert_eq!(multi_client.sequencer_url(), urls[0].clone());
     }
 
     #[tokio::test]
@@ -235,20 +235,20 @@ mod tests {
             MultiSequencerProofClient::new(MockProofClient::new_clients(urls.clone())).unwrap();
 
         // Multiple operations on same client without advancing
-        let url_before = multi_client.sequencer_url().clone();
+        let url_before = multi_client.sequencer_url();
 
         multi_client.pick_fri_job().await.unwrap();
-        assert_eq!(multi_client.sequencer_url(), &url_before);
+        assert_eq!(multi_client.sequencer_url(), url_before);
 
         multi_client
             .submit_fri_proof(1, "vk".to_string(), "proof".to_string())
             .await
             .unwrap();
-        assert_eq!(multi_client.sequencer_url(), &url_before);
+        assert_eq!(multi_client.sequencer_url(), url_before);
 
         // Now advance - should move to next client
         multi_client.advance_index();
-        assert_eq!(multi_client.sequencer_url(), &urls[1]);
-        assert_ne!(multi_client.sequencer_url(), &url_before);
+        assert_eq!(multi_client.sequencer_url(), urls[1].clone());
+        assert_ne!(multi_client.sequencer_url(), url_before);
     }
 }
