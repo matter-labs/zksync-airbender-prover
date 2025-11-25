@@ -107,7 +107,7 @@ impl MultiSequencerProofClient {
 
 #[async_trait]
 impl ProofClient for MultiSequencerProofClient {
-    fn sequencer_url(&self) -> &Url {
+    fn sequencer_url(&self) -> Url {
         self.current_client().sequencer_url()
     }
 
@@ -168,8 +168,8 @@ mod tests {
 
     #[async_trait]
     impl ProofClient for MockProofClient {
-        fn sequencer_url(&self) -> &Url {
-            &self.url
+        fn sequencer_url(&self) -> Url {
+            self.url.clone()
         }
 
         async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
