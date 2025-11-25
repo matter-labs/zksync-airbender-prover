@@ -79,7 +79,7 @@ impl MultiSequencerProofClient {
 
 #[async_trait]
 impl ProofClient for MultiSequencerProofClient {
-    fn sequencer_url(&self) -> &Url {
+    fn sequencer_url(&self) -> Url {
         self.current_client().sequencer_url()
     }
 
@@ -142,8 +142,8 @@ mod tests {
 
     #[async_trait]
     impl ProofClient for MockProofClient {
-        fn sequencer_url(&self) -> &Url {
-            &self.url
+        fn sequencer_url(&self) -> Url {
+            self.url.clone()
         }
 
         async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
@@ -194,12 +194,12 @@ mod tests {
         // When 3 is hit, we should be back to 0
         for i in 0..3 {
             let current_client = multi_client.current_client();
-            assert_eq!(current_client.sequencer_url(), &urls[i]);
+            assert_eq!(current_client.sequencer_url(), urls[i]);
             let still_current_client = multi_client.current_client_and_increment();
-            assert_eq!(still_current_client.sequencer_url(), &urls[i]);
+            assert_eq!(still_current_client.sequencer_url(), urls[i]);
             let next_client = multi_client.current_client();
             let expected_next_index = (i + 1) % urls.len();
-            assert_eq!(next_client.sequencer_url(), &urls[expected_next_index]);
+            assert_eq!(next_client.sequencer_url(), urls[expected_next_index]);
         }
     }
 
@@ -217,12 +217,12 @@ mod tests {
 
         for i in 0..3 {
             multi_client.pick_fri_job().await.unwrap();
-            assert_eq!(multi_client.sequencer_url(), &urls[i]);
+            assert_eq!(multi_client.sequencer_url(), urls[i]);
             multi_client
                 .submit_fri_proof(1, urls[i].to_string(), "proof".to_string())
                 .await
                 .unwrap();
-            assert_eq!(multi_client.sequencer_url(), &urls[(i + 1) % urls.len()]);
+            assert_eq!(multi_client.sequencer_url(), urls[(i + 1) % urls.len()]);
         }
     }
 
@@ -272,7 +272,7 @@ mod tests {
 
         for i in 0..3 {
             multi_client.pick_snark_job().await.unwrap();
-            assert_eq!(multi_client.sequencer_url(), &urls[i]);
+            assert_eq!(multi_client.sequencer_url(), urls[i]);
             multi_client
                 .submit_snark_proof(
                     L2BatchNumber(1),
@@ -282,7 +282,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(multi_client.sequencer_url(), &urls[(i + 1) % urls.len()]);
+            assert_eq!(multi_client.sequencer_url(), urls[(i + 1) % urls.len()]);
         }
     }
 }
