@@ -179,6 +179,9 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 break;
             }
         }
+
+        // Advance index to next sequencer for the next iteration, once we've done a run on first sequencer
+        client.advance_index();
     }
     Ok(())
 }

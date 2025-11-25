@@ -164,6 +164,9 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .await
         .expect("Failed to run FRI prover");
 
+        // Advance to next sequencer regardless of success or failure
+        multi_client.advance_index();
+
         if proof_generated {
             proof_count += 1;
 
@@ -226,7 +229,6 @@ pub async fn run_inner(
                     fri_job_input.vk_hash,
                     fri_job_input.batch_number
                 );
-                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 return Ok(false);
             }
             fri_job_input
@@ -286,12 +288,15 @@ pub async fn run_inner(
         .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
         .await
     {
-        Ok(_) => tracing::info!(
-            "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}",
-            batch_number,
-            vk_hash,
-            client.sequencer_url()
-        ),
+        Ok(_) => {
+            tracing::info!(
+                "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}",
+                batch_number,
+                vk_hash,
+                client.sequencer_url()
+            );
+            Ok(true)
+        }
         Err(err) => {
             // Check if the error is a timeout error
             if err
@@ -308,16 +313,16 @@ pub async fn run_inner(
                 );
                 tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
+            } else {
+                tracing::error!(
+                    "Failed to submit proof for batch number {} with vk hash {} to sequencer {}: {}",
+                    batch_number,
+                    vk_hash,
+                    client.sequencer_url(),
+                    err
+                );
             }
-            tracing::error!(
-                "Failed to submit proof for batch number {} with vk hash {} to sequencer {}: {}",
-                batch_number,
-                vk_hash,
-                client.sequencer_url(),
-                err
-            );
+            Ok(false)
         }
     }
-
-    Ok(true)
 }

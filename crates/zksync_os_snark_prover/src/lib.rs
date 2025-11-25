@@ -19,7 +19,7 @@ use zksync_airbender_execution_utils::{
     get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
+use zksync_sequencer_proof_client::{MultiSequencerProofClient, ProofClient, SnarkProofInputs};
 
 use crate::metrics::SNARK_PROVER_METRICS;
 
@@ -161,7 +161,7 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
 
 pub async fn run_linking_fri_snark(
     _binary_path: String,
-    client: &dyn ProofClient,
+    multi_client: &MultiSequencerProofClient,
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
@@ -190,10 +190,10 @@ pub async fn run_linking_fri_snark(
     let mut proof_count = 0;
 
     loop {
-        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
+        tracing::debug!("Polling sequencer: {}", multi_client.sequencer_url());
 
         let proof_generated = run_inner(
-            client,
+            multi_client,
             &verifier_binary,
             output_dir.clone(),
             trusted_setup_file.clone(),
@@ -204,6 +204,9 @@ pub async fn run_linking_fri_snark(
         )
         .await
         .expect("Failed to run SNARK prover");
+
+        // Advance to next sequencer regardless of success or failure
+        multi_client.advance_index();
 
         if proof_generated {
             proof_count += 1;
@@ -385,6 +388,8 @@ pub async fn run_inner(
             SNARK_PROVER_METRICS
                 .latest_proven_batch
                 .set(end_batch.0 as i64);
+
+            Ok(true)
         }
         Err(e) => {
             // Check if the error is a timeout error
@@ -401,18 +406,19 @@ pub async fn run_inner(
                 );
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
+            } else {
+                tracing::error!(
+                    "Failed to submit SNARK job with vk hash {}, batches {} to {} to sequencer {} due to {e:?}, skipping",
+                    vk_hash,
+                    start_batch,
+                    end_batch,
+                    client.sequencer_url(),
+                );
             }
-            tracing::error!(
-                "Failed to submit SNARK job with vk hash {}, batches {} to {} to sequencer {} due to {e:?}, skipping",
-                vk_hash,
-                start_batch,
-                end_batch,
-                client.sequencer_url(),
-            );
+            // Return false so caller doesn't increment proof counter
+            Ok(false)
         }
-    };
-
-    Ok(true)
+    }
 }
 
 pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
