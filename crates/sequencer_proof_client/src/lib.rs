@@ -115,7 +115,8 @@ pub struct FriJobInputs {
 #[async_trait]
 pub trait ProofClient: Send + Sync {
     /// Returns the sequencer URL for logging purposes.
-    fn sequencer_url(&self) -> &Url;
+    /// The URL has credentials masked for safe logging.
+    fn sequencer_url(&self) -> Url;
 
     /// Fetch the next FRI batch to prove.
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).

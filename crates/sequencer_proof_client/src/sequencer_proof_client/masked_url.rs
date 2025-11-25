@@ -7,20 +7,17 @@ use url::Url;
 /// A URL wrapper that safely masks credentials when displayed.
 /// Use `Deref` to access the original URL for requests, and `Display` for logging.
 #[derive(Clone)]
-pub struct MaskedUrl {
-    url: Url,
-    masked: Url,
-}
+pub struct MaskedUrl(Url);
 
 impl MaskedUrl {
     pub fn new(url: Url) -> Self {
-        let masked = mask_url(url.clone());
-        Self { url, masked }
+        Self(url)
     }
 
-    /// Returns a reference to the masked URL for display/logging purposes.
-    pub fn masked(&self) -> &Url {
-        &self.masked
+    /// Returns a masked URL for display/logging purposes.
+    /// This clones the URL and masks credentials on-demand.
+    pub fn masked(&self) -> Url {
+        mask_url(self.0.clone())
     }
 }
 
@@ -28,7 +25,7 @@ impl fmt::Debug for MaskedUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Show masked URL in debug output for safety
         f.debug_struct("MaskedUrl")
-            .field("url", &self.masked)
+            .field("url", &self.masked())
             .finish()
     }
 }
@@ -36,13 +33,13 @@ impl fmt::Debug for MaskedUrl {
 impl Deref for MaskedUrl {
     type Target = Url;
     fn deref(&self) -> &Url {
-        &self.url
+        &self.0
     }
 }
 
 impl fmt::Display for MaskedUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.masked)
+        write!(f, "{}", self.masked())
     }
 }
 

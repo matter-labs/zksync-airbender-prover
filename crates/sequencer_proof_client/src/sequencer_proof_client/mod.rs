@@ -114,7 +114,7 @@ impl SequencerProofClient {
 
 #[async_trait]
 impl ProofClient for SequencerProofClient {
-    fn sequencer_url(&self) -> &Url {
+    fn sequencer_url(&self) -> Url {
         self.url.masked()
     }
 
@@ -345,7 +345,7 @@ mod tests {
             SequencerProofClient::new(original_url.clone(), "test_prover".to_string(), None)
                 .expect("failed to create client");
 
-        check_url(&expected_url, client.sequencer_url());
+        check_url(&expected_url, &client.sequencer_url());
         check_url(&original_url, &client.url);
     }
 
