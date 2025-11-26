@@ -152,7 +152,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let mut retry_count = 0;
     let retry_interval = Duration::from_millis(100);
-    // If no proof is generated for 5 minutes, log a message
+    // If no proof is generated for 10 seconds, log a message
     let retry_log_interval = Duration::from_secs(10);
 
     loop {
