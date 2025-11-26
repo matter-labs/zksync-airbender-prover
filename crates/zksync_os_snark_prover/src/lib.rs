@@ -21,7 +21,7 @@ use zksync_airbender_execution_utils::{
 };
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
-use crate::metrics::{SnarkProofTimeStats, SNARK_PROVER_METRICS};
+use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
 
 pub mod metrics;
 
@@ -303,7 +303,7 @@ pub async fn run_inner(
 
     let mut stats = SnarkProofTimeStats::new();
 
-    let proof = SnarkProofTimeStats::measure_step(&mut stats.time_taken_merge_fri, || {
+    let proof = stats.measure_step(SnarkStage::MergeFri, || {
         merge_fris(snark_proof_input, verifier_binary, &mut gpu_state)
     });
 
@@ -313,7 +313,7 @@ pub async fn run_inner(
 
     tracing::info!("Creating final proof before SNARKification");
 
-    let final_proof = SnarkProofTimeStats::measure_step(&mut stats.time_taken_final_proof, || {
+    let final_proof = stats.measure_step(SnarkStage::FinalProof, || {
         create_final_proofs_from_program_proof(
             proof,
             RecursionStrategy::UseReducedLog23Machine,
@@ -330,7 +330,7 @@ pub async fn run_inner(
     serialize_to_file(&final_proof, &one_fri_path);
 
     tracing::info!("SNARKifying proof");
-    let snark_proof = SnarkProofTimeStats::measure_step(&mut stats.time_taken_snark, || {
+    let snark_proof = stats.measure_step(SnarkStage::Snark, || {
         prove(
             one_fri_path.into_os_string().into_string().unwrap(),
             output_dir.clone(),
@@ -345,20 +345,15 @@ pub async fn run_inner(
 
     match snark_proof {
         Ok(()) => {
-            stats.observe();
+            stats.observe_full();
 
-            tracing::info!(
-                "Finished generating proof in {:?}, merging FRI took {:?}, final proof took {:?}, SNARKification took {:?}",
-                stats.time_taken_merge_fri + stats.time_taken_final_proof + stats.time_taken_snark,
-                stats.time_taken_merge_fri,
-                stats.time_taken_final_proof,
-                stats.time_taken_snark
-            );
+            tracing::info!("Finished generating proof, time stats: {}", stats);
         }
         Err(e) => {
-            tracing::error!("failed to SNARKify proof: {e:?}");
+            tracing::error!("failed to SNARKify proof: {e:?}, time stats: {}", stats);
         }
     }
+
     let snark_proof: SnarkWrapperProof = deserialize_from_file(
         Path::new(&output_dir)
             .join("snark_proof.json")
