@@ -15,9 +15,7 @@ use zksync_airbender_cli::prover_utils::{
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{
-    FriJobInputs, MultiSequencerProofClient, ProofClient, SequencerProofClient,
-};
+use zksync_sequencer_proof_client::{FriJobInputs, ProofClient, SequencerProofClient};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -117,9 +115,13 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
             .context("failed to create sequencer proof clients")?;
 
-    let multi_client = MultiSequencerProofClient::new(clients)
-        .context("failed to create multi sequencer proof client")?;
-    tracing::debug!("Using sequencer client {:#?}", multi_client);
+    tracing::info!(
+        "Initializing FRI prover with {} sequencer(s):",
+        clients.len()
+    );
+    for client in clients.iter() {
+        tracing::info!("  - {}", client.sequencer_url());
+    }
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -150,11 +152,12 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let mut proof_count = 0;
 
-    loop {
-        tracing::debug!("Polling sequencer: {}", multi_client.sequencer_url());
+    // Cycle through clients in round-robin fashion
+    for client in clients.iter().cycle() {
+        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
         let proof_generated = run_inner(
-            &multi_client,
+            client.as_ref(),
             &binary,
             args.circuit_limit,
             &mut gpu_state,
@@ -163,9 +166,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         )
         .await
         .expect("Failed to run FRI prover");
-
-        // Advance to next sequencer regardless of success or failure
-        multi_client.advance_index();
 
         if proof_generated {
             proof_count += 1;
@@ -185,6 +185,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
+
+    Ok(())
 }
 
 pub async fn run_inner(

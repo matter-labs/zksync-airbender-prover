@@ -7,7 +7,7 @@ use url::Url;
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
-use zksync_sequencer_proof_client::{MultiSequencerProofClient, ProofClient, SequencerProofClient};
+use zksync_sequencer_proof_client::SequencerProofClient;
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -117,11 +117,10 @@ fn main() {
 
                 let timeout = Duration::from_secs(request_timeout_secs);
 
-                let clients: Vec<Box<dyn ProofClient + Send + Sync>> =
+                let clients =
                     SequencerProofClient::new_clients(sequencer_urls, prover_name, Some(timeout))
                         .expect("failed to create sequencer proof clients");
-                let multi_client = MultiSequencerProofClient::new(clients)
-                    .expect("failed to create multi sequencer proof client");
+
                 tracing::info!(
                     "Starting zksync_os_snark_prover with request timeout of {}s",
                     request_timeout_secs
@@ -130,7 +129,7 @@ fn main() {
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
-                        &multi_client,
+                        clients,
                         output_dir,
                         trusted_setup_file,
                         iterations,

@@ -19,7 +19,7 @@ use zksync_airbender_execution_utils::{
     get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use zksync_sequencer_proof_client::{MultiSequencerProofClient, ProofClient, SnarkProofInputs};
+use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
 use crate::metrics::SNARK_PROVER_METRICS;
 
@@ -161,13 +161,21 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
 
 pub async fn run_linking_fri_snark(
     _binary_path: String,
-    multi_client: &MultiSequencerProofClient,
+    clients: Vec<Box<dyn ProofClient + Send + Sync>>,
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
     disable_zk: bool,
 ) -> anyhow::Result<()> {
     let startup_started_at = Instant::now();
+
+    tracing::info!(
+        "Initializing SNARK prover with {} sequencer(s):",
+        clients.len()
+    );
+    for client in clients.iter() {
+        tracing::info!("  - {}", client.sequencer_url());
+    }
 
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
@@ -189,11 +197,12 @@ pub async fn run_linking_fri_snark(
 
     let mut proof_count = 0;
 
-    loop {
-        tracing::debug!("Polling sequencer: {}", multi_client.sequencer_url());
+    // Cycle through clients in round-robin fashion
+    for client in clients.iter().cycle() {
+        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
         let proof_generated = run_inner(
-            multi_client,
+            client.as_ref(),
             &verifier_binary,
             output_dir.clone(),
             trusted_setup_file.clone(),
@@ -204,9 +213,6 @@ pub async fn run_linking_fri_snark(
         )
         .await
         .expect("Failed to run SNARK prover");
-
-        // Advance to next sequencer regardless of success or failure
-        multi_client.advance_index();
 
         if proof_generated {
             proof_count += 1;
@@ -225,6 +231,8 @@ pub async fn run_linking_fri_snark(
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     }
+
+    Ok(())
 }
 
 pub async fn run_inner(
