@@ -190,7 +190,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 tracing::info!("No pending batches to prove from sequencer for {} seconds, retried for {} times", retry_log_interval.as_secs(), retry_count);
                 retry_count = 0;
             }
-            tracing::debug!("No pending batches to prove from sequencer, retrying in {} ms", retry_interval.as_millis());
+            tracing::debug!(
+                "No pending batches to prove from sequencer, retrying in {} ms",
+                retry_interval.as_millis()
+            );
             tokio::time::sleep(retry_interval).await;
         }
     }
