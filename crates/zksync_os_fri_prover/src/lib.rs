@@ -150,7 +150,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let mut proof_count = 0;
 
-    let mut retry_count = 0;
+    let mut retrying_since = Instant::now();
+
     let retry_interval = Duration::from_millis(100);
     // If no proof is generated for 10 seconds, log a message
     let retry_log_interval = Duration::from_secs(10);
@@ -181,14 +182,16 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     return Ok(());
                 }
             }
-            retry_count = 0;
+            retrying_since = Instant::now();
         } else {
             // If no task was found, wait before trying again
-            retry_count += 1;
 
-            if retry_count * retry_interval >= retry_log_interval {
-                tracing::info!("No pending batches to prove from sequencer for {} seconds, retried for {} times", retry_log_interval.as_secs(), retry_count);
-                retry_count = 0;
+            if retrying_since.elapsed() >= retry_log_interval {
+                tracing::info!(
+                    "No pending batches to prove from sequencer for {} seconds",
+                    retrying_since.elapsed().as_secs()
+                );
+                retrying_since = Instant::now();
             }
             tracing::debug!(
                 "No pending batches to prove from sequencer, retrying in {} ms",
