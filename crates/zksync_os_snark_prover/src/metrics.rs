@@ -79,7 +79,7 @@ impl fmt::Display for SnarkProofTimeStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SnarkProofTimeStats {{")?;
         for (stage, duration) in &self.time_taken {
-            write!(f, "{}: {:?}, ", stage, duration)?;
+            write!(f, "{stage}: {duration:?}, ")?;
         }
         write!(f, "}}")
     }
