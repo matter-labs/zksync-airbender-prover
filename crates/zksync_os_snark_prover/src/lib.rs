@@ -252,10 +252,11 @@ pub async fn run_inner(
             }
             if !supported_protocol_versions.contains(&snark_proof_input.vk_hash) {
                 tracing::error!(
-                    "Received unsupported protocol version with vk_hash {} for batches between [{} and {}], skipping",
+                    "Received unsupported protocol version with vk_hash {} for batches between [{} and {}] from sequencer {}, skipping",
                     snark_proof_input.vk_hash,
                     snark_proof_input.from_batch_number.0,
-                    snark_proof_input.to_batch_number.0
+                    snark_proof_input.to_batch_number.0,
+                    client.sequencer_url()
                 );
                 return Ok(false);
             }
