@@ -232,7 +232,7 @@ pub async fn run_inner(
                     fri_job_input.vk_hash,
                     fri_job_input.batch_number,
                     client.sequencer_url()
-                );from sequencer {}
+                );
                 return Ok(false);
             }
             fri_job_input
