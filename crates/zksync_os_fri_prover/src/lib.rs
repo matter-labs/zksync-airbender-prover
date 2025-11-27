@@ -228,10 +228,11 @@ pub async fn run_inner(
         Ok(Some(fri_job_input)) => {
             if !supported_versions.contains(&fri_job_input.vk_hash) {
                 tracing::error!(
-                    "Unsupported protocol version with vk_hash: {} for batch number {}",
+                    "Unsupported protocol version with vk_hash: {} for batch number {} from sequencer {}",
                     fri_job_input.vk_hash,
-                    fri_job_input.batch_number
-                );
+                    fri_job_input.batch_number,
+                    client.sequencer_url()
+                );from sequencer {}
                 return Ok(false);
             }
             fri_job_input
