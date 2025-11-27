@@ -34,6 +34,7 @@ pub struct Args {
         long,
         alias = "base-url",
         value_delimiter = ',',
+        num_args = 1..,
         default_value = "http://localhost:3124",
         value_parser = clap::value_parser!(Url)
     )]

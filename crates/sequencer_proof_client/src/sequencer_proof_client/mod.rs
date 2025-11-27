@@ -61,12 +61,16 @@ impl SequencerProofClient {
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     ///
     /// # Errors
+    /// * if there are no URLs provided (empty vector)
     /// * if creating any of the clients fails
     pub fn new_clients(
         urls: Vec<Url>,
         prover_name: String,
         timeout: Option<Duration>,
     ) -> anyhow::Result<Vec<Box<dyn ProofClient + Send + Sync>>> {
+        if urls.is_empty() {
+            return Err(anyhow!("No sequencer URLs provided"));
+        }
         let mut clients: Vec<Box<dyn ProofClient + Send + Sync>> = vec![];
         for url in urls {
             let masked_url = MaskedUrl::new(url);

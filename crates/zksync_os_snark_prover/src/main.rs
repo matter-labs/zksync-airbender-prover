@@ -43,7 +43,15 @@ enum Commands {
     RunProver {
         /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
         /// The prover will poll sequencers in round-robin fashion
-        #[arg(short, long, alias = "sequencer-url", value_delimiter = ',', default_value = "http://localhost:3124", value_parser = clap::value_parser!(Url))]
+        #[arg(
+            short,
+            long,
+            alias = "sequencer-url",
+            value_delimiter = ',',
+            num_args = 1..,
+            default_value = "http://localhost:3124",
+            value_parser = clap::value_parser!(Url)
+        )]
         sequencer_urls: Vec<Url>,
         #[clap(flatten)]
         setup: SetupOptions,

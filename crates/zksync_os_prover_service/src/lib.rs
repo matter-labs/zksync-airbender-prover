@@ -37,7 +37,15 @@ pub struct Args {
     pub max_fris_per_snark: Option<usize>,
     /// Base URLs for the proof-data server (e.g., "http://<IP>:<PORT>")
     /// Multiple URLs can be provided separated by commas for round-robin load balancing
-    #[arg(short, long, alias = "base-url", value_delimiter = ',', default_value = "http://localhost:3124", value_parser = clap::value_parser!(Url))]
+    #[arg(
+        short,
+        long,
+        alias = "base-url",
+        value_delimiter = ',',
+        num_args = 1..,
+        default_value = "http://localhost:3124",
+        value_parser = clap::value_parser!(Url)
+    )]
     pub sequencer_urls: Vec<Url>,
     /// Path to `app.bin`
     #[arg(long)]
