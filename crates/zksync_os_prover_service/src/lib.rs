@@ -21,7 +21,7 @@ use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 #[cfg(feature = "gpu")]
 use zksync_os_snark_prover::compute_compression_vk;
-use zksync_sequencer_proof_client::{MultiSequencerProofClient, SequencerProofClient};
+use zksync_sequencer_proof_client::SequencerProofClient;
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -37,7 +37,15 @@ pub struct Args {
     pub max_fris_per_snark: Option<usize>,
     /// Base URLs for the proof-data server (e.g., "http://<IP>:<PORT>")
     /// Multiple URLs can be provided separated by commas for round-robin load balancing
-    #[arg(short, long, alias = "base-url", value_delimiter = ',', default_value = "http://localhost:3124", value_parser = clap::value_parser!(Url))]
+    #[arg(
+        short,
+        long,
+        alias = "base-url",
+        value_delimiter = ',',
+        num_args = 1..,
+        default_value = "http://localhost:3124",
+        value_parser = clap::value_parser!(Url)
+    )]
     pub sequencer_urls: Vec<Url>,
     /// Path to `app.bin`
     #[arg(long)]
@@ -71,8 +79,14 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let clients =
         SequencerProofClient::new_clients(args.sequencer_urls, "prover_service".to_string(), None)
             .context("failed to create sequencer proof clients")?;
-    let client = MultiSequencerProofClient::new(clients)
-        .context("failed to create multi sequencer proof client")?;
+
+    tracing::info!(
+        "Initializing Prover Service with {} sequencer(s):",
+        clients.len()
+    );
+    for client in clients.iter() {
+        tracing::info!("  - {}", client.sequencer_url());
+    }
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -103,7 +117,9 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let mut snark_proof_count = 0;
     let mut snark_latency = Instant::now();
 
-    loop {
+    // Cycle through clients in round-robin fashion
+    // Note: This rotates after each complete FRI+SNARK cycle
+    for client in clients.iter().cycle() {
         let mut fri_proof_count = 0;
 
         // For regular fri proving, we keep using reduced RiscV machine.
@@ -116,10 +132,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         let mut gpu_state = GpuSharedState::new(&binary);
 
         // Run FRI prover until we hit one of the limits
-        tracing::info!("Running FRI prover");
+        tracing::info!("Running FRI prover on sequencer {}", client.sequencer_url());
         loop {
             let proof_generated = zksync_os_fri_prover::run_inner(
-                &client,
+                client.as_ref(),
                 &binary,
                 args.circuit_limit,
                 &mut gpu_state,
@@ -148,10 +164,13 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         drop(gpu_state);
 
         // Here we do exactly one SNARK proof
-        tracing::info!("Running SNARK prover");
+        tracing::info!(
+            "Running SNARK prover on sequencer {}",
+            client.sequencer_url()
+        );
         loop {
             let proof_generated = zksync_os_snark_prover::run_inner(
-                &client,
+                client.as_ref(),
                 &verifier_binary,
                 args.output_dir.clone(),
                 args.trusted_setup_file.clone(),
@@ -176,9 +195,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         if let Some(max_iterations) = args.iterations {
             if snark_proof_count >= max_iterations {
                 tracing::info!("Reached maximum iterations ({max_iterations}), exiting...",);
-                break;
+                return Ok(());
             }
         }
     }
+
     Ok(())
 }

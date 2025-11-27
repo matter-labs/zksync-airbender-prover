@@ -64,12 +64,12 @@ const V4: ProtocolVersion = ProtocolVersion {
 /// Corresponds to server's execution_version 5 (or v1.3)
 const V5: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0x58215d25482d81e7cf127d7d435c81beaa9a29a44c3193aca05bd308dcba09c1",
+        "0x996b02b1d0420e997b4dc0d629a3a1bba93ed3185ac463f17b02ff83be139581",
     ),
     airbender_version: AirbenderVersion("v0.5.1"),
-    zksync_os_version: ZkSyncOSVersion("v0.2.2"),
+    zksync_os_version: ZkSyncOSVersion("v0.2.4"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.3"),
-    bin_md5sum: BinMd5Sum("b1d274a5bf1eb9f7a34232e8503b211a"),
+    bin_md5sum: BinMd5Sum("a2421384eb817ba2649f1438dc321d54"),
 };
 
 /// Represents the set of supported protocol versions by this prover implementation.

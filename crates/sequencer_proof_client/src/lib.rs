@@ -1,10 +1,8 @@
 // TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
 
-pub mod multi_sequencer_proof_client;
 pub mod sequencer_proof_client;
 
-pub use multi_sequencer_proof_client::MultiSequencerProofClient;
 pub use sequencer_proof_client::SequencerProofClient;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
@@ -114,16 +112,27 @@ pub struct FriJobInputs {
 
 #[async_trait]
 pub trait ProofClient: Send + Sync {
-    /// Returns the sequencer URL for logging purposes
-    fn sequencer_url(&self) -> &Url;
+    /// Returns the sequencer URL for logging purposes.
+    /// The URL has credentials masked for safe logging.
+    fn sequencer_url(&self) -> Url;
+
+    /// Fetch the next FRI batch to prove.
+    /// Returns `Ok(None)` if there's no batch pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>>;
+
+    /// Submit a FRI proof for the processed batch.
     async fn submit_fri_proof(
         &self,
         batch_number: u32,
         vk_hash: String,
         proof: String,
     ) -> anyhow::Result<()>;
+
+    /// Fetch the next SNARK job to prove.
+    /// Returns `Ok(None)` if there's no job pending (204 No Content).
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
+
+    /// Submit a SNARK proof for the processed batch range.
     async fn submit_snark_proof(
         &self,
         from_batch_number: L2BatchNumber,
@@ -135,12 +144,18 @@ pub trait ProofClient: Send + Sync {
 
 #[async_trait]
 pub trait PeekableProofClient {
+    /// Peek at a FRI job by batch number.
+    /// Note: you can only peek failed jobs as successful ones are removed.
     async fn peek_fri_job(&self, batch_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>>;
+
+    /// Peek at a SNARK job by batch range.
     async fn peek_snark_job(
         &self,
         from_batch_number: u32,
         to_batch_number: u32,
     ) -> anyhow::Result<Option<SnarkProofInputs>>;
+
+    /// Get a failed FRI proof by batch number.
     async fn get_failed_fri_proof(
         &self,
         batch_number: u32,
