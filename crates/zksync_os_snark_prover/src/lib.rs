@@ -21,7 +21,7 @@ use zksync_airbender_execution_utils::{
 };
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
-use crate::metrics::SNARK_PROVER_METRICS;
+use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
 
 pub mod metrics;
 
@@ -71,8 +71,6 @@ pub fn merge_fris(
         return snark_proof_input.fri_proofs[0].clone();
     }
     tracing::info!("Starting proof merging");
-
-    let started_at = Instant::now();
 
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
@@ -129,10 +127,6 @@ pub fn merge_fris(
         proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
         tracing::info!("Finished linking proofs up to batch {}", up_to_batch);
     }
-
-    SNARK_PROVER_METRICS
-        .time_taken_merge_fri
-        .observe(started_at.elapsed().as_secs_f64());
 
     // TODO: We can do a recursion step here as well, IIUC
     tracing::info!(
@@ -247,7 +241,6 @@ pub async fn run_inner(
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
-    let proof_time = Instant::now();
     tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
     let snark_proof_input = match client.pick_snark_job().await {
         Ok(Some(snark_proof_input)) => {
@@ -319,7 +312,12 @@ pub async fn run_inner(
     #[cfg(not(feature = "gpu"))]
     let mut gpu_state = None;
     tracing::info!("Finished initializing GPU state");
-    let proof = merge_fris(snark_proof_input, verifier_binary, &mut gpu_state);
+
+    let mut stats = SnarkProofTimeStats::new();
+
+    let proof = stats.measure_step(SnarkStage::MergeFri, || {
+        merge_fris(snark_proof_input, verifier_binary, &mut gpu_state)
+    });
 
     // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
     #[cfg(feature = "gpu")]
@@ -327,18 +325,16 @@ pub async fn run_inner(
 
     tracing::info!("Creating final proof before SNARKification");
 
-    let final_proof_started_at = Instant::now();
-    let final_proof = create_final_proofs_from_program_proof(
-        proof,
-        RecursionStrategy::UseReducedLog23Machine,
-        #[cfg(feature = "gpu")]
-        true,
-        #[cfg(not(feature = "gpu"))]
-        false,
-    );
-    SNARK_PROVER_METRICS
-        .time_taken_final_proof
-        .observe(final_proof_started_at.elapsed().as_secs_f64());
+    let final_proof = stats.measure_step(SnarkStage::FinalProof, || {
+        create_final_proofs_from_program_proof(
+            proof,
+            RecursionStrategy::UseReducedLog23Machine,
+            #[cfg(feature = "gpu")]
+            true,
+            #[cfg(not(feature = "gpu"))]
+            false,
+        )
+    });
 
     tracing::info!("Finished creating final proof");
     let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
@@ -346,34 +342,30 @@ pub async fn run_inner(
     serialize_to_file(&final_proof, &one_fri_path);
 
     tracing::info!("SNARKifying proof");
-    let snark_time = Instant::now();
-    match prove(
-        one_fri_path.into_os_string().into_string().unwrap(),
-        output_dir.clone(),
-        Some(trusted_setup_file.clone()),
-        false,
-        #[cfg(feature = "gpu")]
-        Some(precomputations),
-        // note that the API is use_zk, so we invert the disable_zk flag
-        !disable_zk,
-    ) {
+    let snark_proof = stats.measure_step(SnarkStage::Snark, || {
+        prove(
+            one_fri_path.into_os_string().into_string().unwrap(),
+            output_dir.clone(),
+            Some(trusted_setup_file.clone()),
+            false,
+            #[cfg(feature = "gpu")]
+            Some(precomputations),
+            // note that the API is use_zk, so we invert the disable_zk flag
+            !disable_zk,
+        )
+    });
+
+    match snark_proof {
         Ok(()) => {
-            tracing::info!(
-                "SNARKification took {:?}, with total proving time being {:?}",
-                snark_time.elapsed(),
-                proof_time.elapsed()
-            );
-            SNARK_PROVER_METRICS
-                .time_taken_snark
-                .observe(snark_time.elapsed().as_secs_f64());
-            SNARK_PROVER_METRICS
-                .time_taken_full
-                .observe(proof_time.elapsed().as_secs_f64());
+            stats.observe_full();
+
+            tracing::info!("Finished generating proof, time stats: {}", stats);
         }
         Err(e) => {
-            tracing::error!("failed to SNARKify proof: {e:?}");
+            tracing::error!("failed to SNARKify proof: {e:?}, time stats: {}", stats);
         }
     }
+
     let snark_proof: SnarkWrapperProof = deserialize_from_file(
         Path::new(&output_dir)
             .join("snark_proof.json")

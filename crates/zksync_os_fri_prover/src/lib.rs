@@ -153,6 +153,12 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let mut proof_count = 0;
 
+    let mut retrying_since = Instant::now();
+
+    let retry_interval = Duration::from_millis(100);
+    // If no proof is generated for 10 seconds, log a message
+    let retry_log_interval = Duration::from_secs(10);
+
     // Cycle through clients in round-robin fashion
     for client in clients.iter().cycle() {
         tracing::debug!("Polling sequencer: {}", client.sequencer_url());
@@ -180,10 +186,22 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     return Ok(());
                 }
             }
+            retrying_since = Instant::now();
         } else {
             // If no task was found, wait before trying again
-            tracing::info!("No pending batches to prove from sequencer, retrying in 100ms...");
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+            if retrying_since.elapsed() >= retry_log_interval {
+                tracing::info!(
+                    "No pending batches to prove from sequencer for {} seconds",
+                    retrying_since.elapsed().as_secs()
+                );
+                retrying_since = Instant::now();
+            }
+            tracing::debug!(
+                "No pending batches to prove from sequencer, retrying in {} ms",
+                retry_interval.as_millis()
+            );
+            tokio::time::sleep(retry_interval).await;
         }
     }
 
@@ -284,9 +302,9 @@ pub async fn run_inner(
         .latest_proven_batch
         .set(batch_number as i64);
 
-    FRI_PROVER_METRICS
-        .time_taken
-        .observe(started_at.elapsed().as_secs_f64());
+    let proof_time = started_at.elapsed().as_secs_f64();
+
+    FRI_PROVER_METRICS.time_taken.observe(proof_time);
 
     match client
         .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
@@ -294,10 +312,11 @@ pub async fn run_inner(
     {
         Ok(_) => {
             tracing::info!(
-                "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}",
+                "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}, generated in {} seconds",
                 batch_number,
                 vk_hash,
-                client.sequencer_url()
+                client.sequencer_url(),
+                proof_time
             );
             Ok(true)
         }
