@@ -1,8 +1,7 @@
-mod masked_url;
-
 use std::time::{Duration, Instant};
 
 use crate::metrics::Method;
+use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
     FailedFriProofPayload, FriJobInputs, GetSnarkProofPayload, NextFriProverJobPayload,
     PeekableProofClient, ProofClient, SnarkProofInputs, SubmitFriProofPayload,
@@ -14,17 +13,16 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
 use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::StatusCode;
 use serde_json;
 use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 
-use masked_url::{mask_reqwest_error, MaskedUrl};
-
 #[derive(Debug)]
 pub struct SequencerProofClient {
     client: reqwest::Client,
-    url: MaskedUrl,
+    endpoint: Url,
     prover_name: String,
 }
 
@@ -32,54 +30,81 @@ impl SequencerProofClient {
     /// Create a new proof sequencer client.
     ///
     /// # Arguments
-    /// * `url` - The URL of the sequencer server
+    /// * `endpoint` - The sequencer endpoint (URL + optional credentials)
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     ///
     /// # Errors
     /// * if building the reqwest client fails
-    pub fn new(url: Url, prover_name: String, timeout: Option<Duration>) -> anyhow::Result<Self> {
+    pub fn new(
+        endpoint: SequencerEndpoint,
+        prover_name: String,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<Self> {
+        let mut headers = HeaderMap::new();
+
+        // Add Basic Auth header if credentials are present
+        if let Some(creds) = &endpoint.credentials {
+            use secrecy::ExposeSecret;
+            let auth_value = format!(
+                "Basic {}",
+                STANDARD.encode(format!(
+                    "{}:{}",
+                    creds.username,
+                    creds.password.expose_secret()
+                ))
+            );
+            headers.insert(
+                AUTHORIZATION,
+                HeaderValue::from_str(&auth_value).context("Failed to create auth header value")?,
+            );
+        }
+
         let client = reqwest::Client::builder()
             .timeout(timeout.unwrap_or(Duration::from_secs(2)))
+            .default_headers(headers)
             .build()
             .context("Failed to build reqwest client")?;
 
-        let url = MaskedUrl::new(url);
-
         Ok(Self {
             client,
-            url,
+            endpoint: endpoint.url,
             prover_name,
         })
     }
 
-    /// Create multiple sequencer proof clients from a list of URLs.
+    /// Create multiple sequencer proof clients from a list of endpoints.
     ///
     /// # Arguments
-    /// * `urls` - A vector of sequencer URLs
+    /// * `endpoints` - A vector of sequencer endpoints
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     ///
     /// # Errors
-    /// * if there are no URLs provided (empty vector)
+    /// * if there are no endpoints provided (empty vector)
     /// * if creating any of the clients fails
     pub fn new_clients(
-        urls: Vec<Url>,
+        endpoints: Vec<SequencerEndpoint>,
         prover_name: String,
         timeout: Option<Duration>,
     ) -> anyhow::Result<Vec<Box<dyn ProofClient + Send + Sync>>> {
-        if urls.is_empty() {
-            return Err(anyhow!("No sequencer URLs provided"));
+        if endpoints.is_empty() {
+            return Err(anyhow!("No sequencer endpoints provided"));
         }
-        let mut clients: Vec<Box<dyn ProofClient + Send + Sync>> = vec![];
-        for url in urls {
-            let masked_url = MaskedUrl::new(url);
-            let client =
-                SequencerProofClient::new((*masked_url).clone(), prover_name.clone(), timeout)
-                    .with_context(|| format!("failed to create sequencer with url {masked_url}"))?;
-            clients.push(Box::new(client) as Box<dyn ProofClient + Send + Sync>);
-        }
-        Ok(clients)
+
+        endpoints
+            .into_iter()
+            .enumerate()
+            .map(|(i, endpoint)| {
+                let url = endpoint.url.clone();
+                let client = SequencerProofClient::new(endpoint, prover_name.clone(), timeout)
+                    .with_context(|| {
+                        format!("Failed to create sequencer client #{i} at url {url:?}")
+                    })?;
+
+                Ok(Box::new(client) as Box<dyn ProofClient + Send + Sync>)
+            })
+            .collect()
     }
 
     /// Serialize a SNARK proof into a base64-encoded string suitable for submission.
@@ -108,18 +133,21 @@ impl SequencerProofClient {
         Ok(STANDARD.encode(byte_serialized_proof))
     }
 
-    /// Constructs a prover API endpoint URL while ensuring any embedded
-    /// credentials are masked in logs and error messages.
-    fn build_url(&self, path: &str) -> anyhow::Result<MaskedUrl> {
-        let url = self.url.join("prover-jobs/v1/")?.join(path)?;
-        Ok(MaskedUrl::new(url))
+    /// Constructs a prover API endpoint URL.
+    fn build_url(&self, path: &str) -> anyhow::Result<Url> {
+        let url = self
+            .endpoint
+            .join("prover-jobs/v1/")?
+            .join(path)
+            .with_context(|| format!("Failed to build URL for path: {path}"))?;
+        Ok(url)
     }
 }
 
 #[async_trait]
 impl ProofClient for SequencerProofClient {
-    fn sequencer_url(&self) -> Url {
-        self.url.masked()
+    fn sequencer_url(&self) -> &Url {
+        &self.endpoint
     }
 
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
@@ -129,10 +157,10 @@ impl ProofClient for SequencerProofClient {
 
         let resp = self
             .client
-            .post((*url).clone())
+            .post(url.clone())
             .send()
             .await
-            .map_err(mask_reqwest_error)?;
+            .context("Pick Fri Job request failed")?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickFri]
             .observe(started_at.elapsed().as_secs_f64());
@@ -174,11 +202,11 @@ impl ProofClient for SequencerProofClient {
 
         let resp = self
             .client
-            .post((*url).clone())
+            .post(url.clone())
             .json(&payload)
             .send()
             .await
-            .map_err(mask_reqwest_error)?;
+            .context("Submit Fri Proof request failed")?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitFri]
             .observe(started_at.elapsed().as_secs_f64());
@@ -187,8 +215,9 @@ impl ProofClient for SequencerProofClient {
             Ok(())
         } else {
             Err(anyhow!(
-                "Server returned {} when submitting proof to {url}",
-                resp.status()
+                "Server returned {} when submitting proof to {}",
+                resp.status(),
+                url
             ))
         }
     }
@@ -200,10 +229,10 @@ impl ProofClient for SequencerProofClient {
 
         let resp = self
             .client
-            .post((*url).clone())
+            .post(url.clone())
             .send()
             .await
-            .map_err(mask_reqwest_error)?;
+            .context("Pick Snark Job request failed")?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickSnark]
             .observe(started_at.elapsed().as_secs_f64());
@@ -244,13 +273,13 @@ impl ProofClient for SequencerProofClient {
             proof: serialized_proof,
         };
         self.client
-            .post((*url).clone())
+            .post(url.clone())
             .json(&payload)
             .send()
             .await
-            .map_err(mask_reqwest_error)?
+            .context("Submit Snark Proof request failed")?
             .error_for_status()
-            .map_err(mask_reqwest_error)?;
+            .context("Request returned error status")?;
 
         SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitSnark]
             .observe(started_at.elapsed().as_secs_f64());
@@ -264,10 +293,11 @@ impl PeekableProofClient for SequencerProofClient {
         let url = self.build_url(&format!("FRI/{batch_number}/peek"))?;
         let resp = self
             .client
-            .get((*url).clone())
+            .get(url.clone())
             .send()
             .await
-            .map_err(mask_reqwest_error)?;
+            .context("Peek Fri Job request failed")?;
+
         match resp.status() {
             StatusCode::OK => {
                 let body: NextFriProverJobPayload = resp.json().await?;
@@ -278,7 +308,7 @@ impl PeekableProofClient for SequencerProofClient {
             }
             StatusCode::NO_CONTENT => Ok(None),
             s => Err(anyhow!(
-                "Unexpected status {s} when peeking the batch {batch_number} at {url}"
+                "Unexpected status {s} when peeking the batch {batch_number} at {url}",
             )),
         }
     }
@@ -291,10 +321,11 @@ impl PeekableProofClient for SequencerProofClient {
         let url = self.build_url(&format!("SNARK/{from_batch_number}/{to_batch_number}/peek"))?;
         let resp = self
             .client
-            .get((*url).clone())
+            .get(url.clone())
             .send()
             .await
-            .map_err(mask_reqwest_error)?;
+            .context("Peek Snark Job request failed")?;
+
         match resp.status() {
             StatusCode::OK => {
                 let get_snark_proof_payload = resp.json::<GetSnarkProofPayload>().await?;
@@ -306,7 +337,7 @@ impl PeekableProofClient for SequencerProofClient {
             }
             StatusCode::NO_CONTENT => Ok(None),
             s => Err(anyhow!(
-                "Unexpected status {s} when peeking FRI proofs from {from_batch_number} to {to_batch_number} at {url}"
+                "Unexpected status {s} when peeking FRI proofs from {from_batch_number} to {to_batch_number} at {url}",
             )),
         }
     }
@@ -318,10 +349,11 @@ impl PeekableProofClient for SequencerProofClient {
         let url = self.build_url(&format!("FRI/{batch_number}/failed"))?;
         let resp = self
             .client
-            .get((*url).clone())
+            .get(url.clone())
             .send()
             .await
-            .map_err(mask_reqwest_error)?;
+            .context("Get Failed Fri Proof request failed")?;
+
         match resp.status() {
             StatusCode::OK => {
                 let body: FailedFriProofPayload = resp.json().await?;
@@ -329,7 +361,7 @@ impl PeekableProofClient for SequencerProofClient {
             }
             StatusCode::NO_CONTENT => Ok(None),
             s => Err(anyhow!(
-                "Unexpected status {s} when peeking failed FRI proof for batch {batch_number} at {url}"
+                "Unexpected status {s} when peeking failed FRI proof for batch {batch_number} at {url}",
             )),
         }
     }
@@ -340,24 +372,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_client_masks_password() {
-        let original_url: Url = "http://user:password123@localhost:3124".parse().unwrap();
-        let mut expected_url = original_url.clone();
-        expected_url.set_password(Some("******")).unwrap();
+    fn test_client_strips_credentials() {
+        let endpoint = SequencerEndpoint::parse("http://user:password123@localhost:3124").unwrap();
 
-        let client =
-            SequencerProofClient::new(original_url.clone(), "test_prover".to_string(), None)
-                .expect("failed to create client");
+        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None)
+            .expect("failed to create client");
 
-        check_url(&expected_url, &client.sequencer_url());
-        check_url(&original_url, &client.url);
+        // URL should be clean (no credentials)
+        let url = client.sequencer_url();
+        assert_eq!(url.username(), "");
+        assert_eq!(url.password(), None);
+        assert_eq!(url.as_str(), "http://localhost:3124/");
     }
 
-    fn check_url(expected: &Url, got: &Url) {
-        assert_eq!(expected.scheme(), got.scheme());
-        assert_eq!(expected.host(), got.host());
-        assert_eq!(expected.port(), got.port());
-        assert_eq!(expected.username(), got.username());
-        assert_eq!(expected.password(), got.password());
+    #[test]
+    fn test_client_without_credentials() {
+        let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
+
+        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None)
+            .expect("failed to create client");
+
+        let url = client.sequencer_url();
+        assert_eq!(url.as_str(), "http://localhost:3124/");
     }
 }

@@ -3,11 +3,10 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
-use url::Url;
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
-use zksync_sequencer_proof_client::SequencerProofClient;
+use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -41,18 +40,23 @@ enum Commands {
     },
 
     RunProver {
-        /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
-        /// The prover will poll sequencers in round-robin fashion
+        /// Sequencer URL(s) to poll for tasks. Comma-separated for round-robin.
+        ///
+        /// Format: http[s]://[username:password@]host:port
+        ///
+        /// Examples:
+        ///   --sequencer-urls http://localhost:3124,https://user1:pass1@sequencer1.com:3124,https://user2:pass2@sequencer2.com
+        ///
+        /// Credentials are extracted and sent via HTTP Authorization headers.
         #[arg(
             short,
             long,
             alias = "sequencer-url",
             value_delimiter = ',',
             num_args = 1..,
-            default_value = "http://localhost:3124",
-            value_parser = clap::value_parser!(Url)
+            default_value = "http://localhost:3124"
         )]
-        sequencer_urls: Vec<Url>,
+        sequencer_urls: Vec<SequencerEndpoint>,
         #[clap(flatten)]
         setup: SetupOptions,
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
@@ -125,6 +129,11 @@ fn main() {
 
                 let timeout = Duration::from_secs(request_timeout_secs);
 
+                tracing::info!(
+                    "Creating {} sequencer proof clients for urls: {:?}",
+                    sequencer_urls.len(),
+                    sequencer_urls
+                );
                 let clients =
                     SequencerProofClient::new_clients(sequencer_urls, prover_name, Some(timeout))
                         .expect("failed to create sequencer proof clients");

@@ -1,8 +1,10 @@
 // TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
 
+pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
 
+pub use sequencer_endpoint::SequencerEndpoint;
 pub use sequencer_proof_client::SequencerProofClient;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
@@ -113,8 +115,7 @@ pub struct FriJobInputs {
 #[async_trait]
 pub trait ProofClient: Send + Sync {
     /// Returns the sequencer URL for logging purposes.
-    /// The URL has credentials masked for safe logging.
-    fn sequencer_url(&self) -> Url;
+    fn sequencer_url(&self) -> &Url;
 
     /// Fetch the next FRI batch to prove.
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).

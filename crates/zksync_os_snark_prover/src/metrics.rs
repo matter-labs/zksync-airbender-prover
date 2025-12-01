@@ -1,6 +1,7 @@
-use std::net::Ipv4Addr;
+use core::fmt;
+use std::{collections::HashMap, net::Ipv4Addr, time::Duration};
 
-use tokio::sync::watch;
+use tokio::{sync::watch, time::Instant};
 use vise::{Counter, Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
 
@@ -45,3 +46,90 @@ pub struct SnarkProverMetrics {
 
 #[vise::register]
 pub(crate) static SNARK_PROVER_METRICS: vise::Global<SnarkProverMetrics> = vise::Global::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SnarkStage {
+    MergeFri,
+    FinalProof,
+    Snark,
+    Full,
+}
+
+impl fmt::Display for SnarkStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SnarkStage::MergeFri => "merge_fri",
+                SnarkStage::FinalProof => "final_proof",
+                SnarkStage::Snark => "snark",
+                SnarkStage::Full => "full",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SnarkProofTimeStats {
+    time_taken: HashMap<SnarkStage, Duration>,
+}
+
+impl fmt::Display for SnarkProofTimeStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SnarkProofTimeStats {{")?;
+        for (stage, duration) in &self.time_taken {
+            write!(f, "{stage}: {duration:?}, ")?;
+        }
+        write!(f, "}}")
+    }
+}
+
+impl SnarkProofTimeStats {
+    pub fn new() -> Self {
+        Self {
+            time_taken: HashMap::new(),
+        }
+    }
+
+    pub fn observe_step(&mut self, stage: SnarkStage, duration: Duration) {
+        self.time_taken.insert(stage, duration);
+        match stage {
+            SnarkStage::MergeFri => SNARK_PROVER_METRICS
+                .time_taken_merge_fri
+                .observe(duration.as_secs_f64()),
+            SnarkStage::FinalProof => SNARK_PROVER_METRICS
+                .time_taken_final_proof
+                .observe(duration.as_secs_f64()),
+            SnarkStage::Snark => SNARK_PROVER_METRICS
+                .time_taken_snark
+                .observe(duration.as_secs_f64()),
+            SnarkStage::Full => SNARK_PROVER_METRICS
+                .time_taken_full
+                .observe(duration.as_secs_f64()),
+        }
+    }
+
+    pub fn observe_full(&mut self) {
+        let merge_fri = self.time_taken.get(&SnarkStage::MergeFri);
+        let final_proof = self.time_taken.get(&SnarkStage::FinalProof);
+        let snark = self.time_taken.get(&SnarkStage::Snark);
+
+        if let (Some(merge_fri), Some(final_proof), Some(snark)) = (merge_fri, final_proof, snark) {
+            let full_duration = *merge_fri + *final_proof + *snark;
+            self.observe_step(SnarkStage::Full, full_duration);
+        } else {
+            tracing::error!("Failed to observe full duration of snark proof, some of the items are missing: {:?}", self.time_taken);
+        }
+    }
+
+    pub fn measure_step<F, T>(&mut self, stage: SnarkStage, step: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let start = Instant::now();
+        let result = step();
+        self.observe_step(stage, start.elapsed());
+        result
+    }
+}

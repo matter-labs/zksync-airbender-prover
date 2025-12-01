@@ -9,13 +9,14 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use url::Url;
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{FriJobInputs, ProofClient, SequencerProofClient};
+use zksync_sequencer_proof_client::{
+    FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
+};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -27,18 +28,23 @@ pub mod metrics;
 #[command(version = "1.0")]
 #[command(about = "Prover for Zksync OS", long_about = None)]
 pub struct Args {
-    /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
-    /// The prover will poll sequencers in round-robin fashion
+    /// Sequencer URL(s) to poll for tasks. Comma-separated for round-robin.
+    ///
+    /// Format: http[s]://[username:password@]host:port
+    ///
+    /// Examples:
+    ///   --sequencer-urls http://localhost:3124,https://user1:pass1@sequencer1.com:3124,https://user2:pass2@sequencer2.com
+    ///
+    /// Credentials are extracted and sent via HTTP Authorization headers.
     #[arg(
         short,
         long,
         alias = "base-url",
         value_delimiter = ',',
         num_args = 1..,
-        default_value = "http://localhost:3124",
-        value_parser = clap::value_parser!(Url)
+        default_value = "http://localhost:3124"
     )]
-    pub sequencer_urls: Vec<Url>,
+    pub sequencer_urls: Vec<SequencerEndpoint>,
     /// Enable logging and use the logging-enabled binary
     /// This is not used in the FRI prover, but is kept for backward compatibility.
     #[arg(long)]
@@ -112,17 +118,15 @@ pub fn create_proof(
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.request_timeout_secs);
 
+    tracing::info!(
+        "Creating {} sequencer proof clients for urls: {:?}",
+        args.sequencer_urls.len(),
+        args.sequencer_urls
+    );
+
     let clients =
         SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
             .context("failed to create sequencer proof clients")?;
-
-    tracing::info!(
-        "Initializing FRI prover with {} sequencer(s):",
-        clients.len()
-    );
-    for client in clients.iter() {
-        tracing::info!("  - {}", client.sequencer_url());
-    }
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -153,6 +157,12 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let mut proof_count = 0;
 
+    let mut retrying_since = Instant::now();
+
+    let retry_interval = Duration::from_millis(100);
+    // If no proof is generated for 10 seconds, log a message
+    let retry_log_interval = Duration::from_secs(10);
+
     // Cycle through clients in round-robin fashion
     for client in clients.iter().cycle() {
         tracing::debug!("Polling sequencer: {}", client.sequencer_url());
@@ -180,10 +190,22 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     return Ok(());
                 }
             }
+            retrying_since = Instant::now();
         } else {
             // If no task was found, wait before trying again
-            tracing::info!("No pending batches to prove from sequencer, retrying in 100ms...");
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+            if retrying_since.elapsed() >= retry_log_interval {
+                tracing::info!(
+                    "No pending batches to prove from sequencer for {} seconds",
+                    retrying_since.elapsed().as_secs()
+                );
+                retrying_since = Instant::now();
+            }
+            tracing::debug!(
+                "No pending batches to prove from sequencer, retrying in {} ms",
+                retry_interval.as_millis()
+            );
+            tokio::time::sleep(retry_interval).await;
         }
     }
 
@@ -228,9 +250,10 @@ pub async fn run_inner(
         Ok(Some(fri_job_input)) => {
             if !supported_versions.contains(&fri_job_input.vk_hash) {
                 tracing::error!(
-                    "Unsupported protocol version with vk_hash: {} for batch number {}",
+                    "Unsupported protocol version with vk_hash: {} for batch number {} from sequencer {}",
                     fri_job_input.vk_hash,
-                    fri_job_input.batch_number
+                    fri_job_input.batch_number,
+                    client.sequencer_url()
                 );
                 return Ok(false);
             }
@@ -283,9 +306,9 @@ pub async fn run_inner(
         .latest_proven_batch
         .set(batch_number as i64);
 
-    FRI_PROVER_METRICS
-        .time_taken
-        .observe(started_at.elapsed().as_secs_f64());
+    let proof_time = started_at.elapsed().as_secs_f64();
+
+    FRI_PROVER_METRICS.time_taken.observe(proof_time);
 
     match client
         .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
@@ -293,10 +316,11 @@ pub async fn run_inner(
     {
         Ok(_) => {
             tracing::info!(
-                "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}",
+                "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}, generated in {} seconds",
                 batch_number,
                 vk_hash,
-                client.sequencer_url()
+                client.sequencer_url(),
+                proof_time
             );
             Ok(true)
         }
