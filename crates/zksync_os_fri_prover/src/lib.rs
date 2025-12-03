@@ -267,6 +267,12 @@ pub async fn run_inner(
 
     let started_at = Instant::now();
 
+    std::fs::write(format!("batch_input_{batch_number}.json"), serde_json::to_string(&FriJobInputs{
+        batch_number,
+        vk_hash: vk_hash.clone(),
+        prover_input: prover_input.clone(),
+    }).unwrap()).unwrap();
+
     // make prover_input (Vec<u8>) into Vec<u32>:
     let prover_input: Vec<u32> = prover_input
         .chunks_exact(4)
