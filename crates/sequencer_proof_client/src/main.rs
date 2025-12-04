@@ -1,25 +1,25 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
-use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
-    FriJobInputs, L2BatchNumber, ProofClient, SequencerProofClient,
+    FriJobInputs, L2BatchNumber, ProofClient, SequencerEndpoint, SequencerProofClient,
 };
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// Sequencer URL to submit proofs to
+    ///
+    /// Format: http[s]://[username:password@]host:port
     #[arg(
         short,
         long,
         global = true,
         value_name = "URL",
-        default_value = "http://localhost:3124",
-        value_parser = clap::value_parser!(Url)
+        default_value = "http://localhost:3124"
     )]
-    url: Option<Url>,
+    url: Option<SequencerEndpoint>,
 
     /// Activate verbose logging (`-v`, `-vv`, ...)
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]

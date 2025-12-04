@@ -10,7 +10,6 @@ use anyhow::Context;
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use url::Url;
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
 use zksync_airbender_cli::prover_utils::load_binary_from_path;
@@ -21,7 +20,7 @@ use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 #[cfg(feature = "gpu")]
 use zksync_os_snark_prover::compute_compression_vk;
-use zksync_sequencer_proof_client::SequencerProofClient;
+use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -35,18 +34,23 @@ pub struct Args {
     /// Max amount of FRI proofs per SNARK (default value - 100)
     #[arg(long, default_value = "100", conflicts_with = "max_snark_latency")]
     pub max_fris_per_snark: Option<usize>,
-    /// Base URLs for the proof-data server (e.g., "http://<IP>:<PORT>")
-    /// Multiple URLs can be provided separated by commas for round-robin load balancing
+    /// Sequencer URL(s) for polling tasks. Comma-separated for round-robin.
+    ///
+    /// Format: http[s]://[username:password@]host:port
+    ///
+    /// Examples:
+    ///   --sequencer-urls http://localhost:3124,https://user1:pass1@sequencer1.com:3124,https://user2:pass2@sequencer2.com
+    ///
+    /// Credentials are extracted and sent via HTTP Authorization headers.
     #[arg(
         short,
         long,
         alias = "base-url",
         value_delimiter = ',',
         num_args = 1..,
-        default_value = "http://localhost:3124",
-        value_parser = clap::value_parser!(Url)
+        default_value = "http://localhost:3124"
     )]
-    pub sequencer_urls: Vec<Url>,
+    pub sequencer_urls: Vec<SequencerEndpoint>,
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
@@ -76,17 +80,14 @@ pub fn init_tracing() {
 }
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
+    tracing::info!(
+        "Creating {} sequencer proof clients for urls: {:?}",
+        args.sequencer_urls.len(),
+        args.sequencer_urls
+    );
     let clients =
         SequencerProofClient::new_clients(args.sequencer_urls, "prover_service".to_string(), None)
             .context("failed to create sequencer proof clients")?;
-
-    tracing::info!(
-        "Initializing Prover Service with {} sequencer(s):",
-        clients.len()
-    );
-    for client in clients.iter() {
-        tracing::info!("  - {}", client.sequencer_url());
-    }
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path

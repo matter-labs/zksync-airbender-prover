@@ -9,13 +9,14 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use url::Url;
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{FriJobInputs, ProofClient, SequencerProofClient};
+use zksync_sequencer_proof_client::{
+    FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
+};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -27,18 +28,23 @@ pub mod metrics;
 #[command(version = "1.0")]
 #[command(about = "Prover for Zksync OS", long_about = None)]
 pub struct Args {
-    /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
-    /// The prover will poll sequencers in round-robin fashion
+    /// Sequencer URL(s) to poll for tasks. Comma-separated for round-robin.
+    ///
+    /// Format: http[s]://[username:password@]host:port
+    ///
+    /// Examples:
+    ///   --sequencer-urls http://localhost:3124,https://user1:pass1@sequencer1.com:3124,https://user2:pass2@sequencer2.com
+    ///
+    /// Credentials are extracted and sent via HTTP Authorization headers.
     #[arg(
         short,
         long,
         alias = "base-url",
         value_delimiter = ',',
         num_args = 1..,
-        default_value = "http://localhost:3124",
-        value_parser = clap::value_parser!(Url)
+        default_value = "http://localhost:3124"
     )]
-    pub sequencer_urls: Vec<Url>,
+    pub sequencer_urls: Vec<SequencerEndpoint>,
     /// Enable logging and use the logging-enabled binary
     /// This is not used in the FRI prover, but is kept for backward compatibility.
     #[arg(long)]
@@ -112,17 +118,15 @@ pub fn create_proof(
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.request_timeout_secs);
 
+    tracing::info!(
+        "Creating {} sequencer proof clients for urls: {:?}",
+        args.sequencer_urls.len(),
+        args.sequencer_urls
+    );
+
     let clients =
         SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
             .context("failed to create sequencer proof clients")?;
-
-    tracing::info!(
-        "Initializing FRI prover with {} sequencer(s):",
-        clients.len()
-    );
-    for client in clients.iter() {
-        tracing::info!("  - {}", client.sequencer_url());
-    }
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
