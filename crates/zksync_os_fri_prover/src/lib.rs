@@ -67,6 +67,10 @@ pub struct Args {
     /// Name of the prover for identification in the sequencer's prover api
     #[arg(long, default_value = "unknown_prover")]
     pub prover_name: String,
+
+    /// Test mode - only run one FRI proof
+    #[arg(long, default_value_t = false)]
+    pub test_mode: bool,
 }
 
 pub fn init_tracing() {
@@ -170,6 +174,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             &mut gpu_state,
             args.path.clone(),
             &supported_versions,
+            args.test_mode,
         )
         .await
         .expect("Failed to run FRI prover");
@@ -216,53 +221,60 @@ pub async fn run_inner(
     #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
+    test_mode: bool,
 ) -> anyhow::Result<bool> {
     let FriJobInputs {
         batch_number,
         vk_hash,
         prover_input,
-    } = match client.pick_fri_job().await {
-        Err(err) => {
-            // Check if the error is a timeout error
-            if err
-                .downcast_ref::<reqwest::Error>()
-                .map(|e| e.is_timeout())
-                .unwrap_or(false)
-            {
+    } = if !test_mode {
+            match client.pick_fri_job().await {
+            Err(err) => {
+                // Check if the error is a timeout error
+                if err
+                    .downcast_ref::<reqwest::Error>()
+                    .map(|e| e.is_timeout())
+                    .unwrap_or(false)
+                {
+                    tracing::error!(
+                        "Timeout waiting for response from sequencer {}: {err}",
+                        client.sequencer_url()
+                    );
+                    tracing::error!("Exiting prover due to timeout");
+                    FRI_PROVER_METRICS.timeout_errors.inc();
+                    return Ok(false);
+                }
                 tracing::error!(
-                    "Timeout waiting for response from sequencer {}: {err}",
-                    client.sequencer_url()
-                );
-                tracing::error!("Exiting prover due to timeout");
-                FRI_PROVER_METRICS.timeout_errors.inc();
-                return Ok(false);
-            }
-            tracing::error!(
-                "Error fetching next prover job from sequencer {}: {err}",
-                client.sequencer_url()
-            );
-            return Ok(false);
-        }
-        Ok(Some(fri_job_input)) => {
-            if !supported_versions.contains(&fri_job_input.vk_hash) {
-                tracing::error!(
-                    "Unsupported protocol version with vk_hash: {} for batch number {} from sequencer {}",
-                    fri_job_input.vk_hash,
-                    fri_job_input.batch_number,
+                    "Error fetching next prover job from sequencer {}: {err}",
                     client.sequencer_url()
                 );
                 return Ok(false);
             }
-            fri_job_input
-        }
+            Ok(Some(fri_job_input)) => {
+                if !supported_versions.contains(&fri_job_input.vk_hash) {
+                    tracing::error!(
+                        "Unsupported protocol version with vk_hash: {} for batch number {} from sequencer {}",
+                        fri_job_input.vk_hash,
+                        fri_job_input.batch_number,
+                        client.sequencer_url()
+                    );
+                    return Ok(false);
+                }
+                fri_job_input
+            }
 
-        Ok(None) => {
-            tracing::debug!(
-                "No pending batches to prove from sequencer {}",
-                client.sequencer_url()
-            );
-            return Ok(false);
+            Ok(None) => {
+                tracing::debug!(
+                    "No pending batches to prove from sequencer {}",
+                    client.sequencer_url()
+                );
+                return Ok(false);
+            }
         }
+    }
+    else {
+        tracing::info!("Running in test mode, getting batch input from file");
+        serde_json::from_str(&std::fs::read_to_string("batch_input_3.json").unwrap()).unwrap()
     };
 
     let started_at = Instant::now();
