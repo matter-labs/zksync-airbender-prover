@@ -92,7 +92,6 @@ impl std::fmt::Debug for SequencerEndpoint {
 
         if let Some(creds) = &self.credentials {
             debug.field("username", &creds.username);
-            debug.field("password", &"****");
         } else {
             debug.field("credentials", &None::<()>);
         }
