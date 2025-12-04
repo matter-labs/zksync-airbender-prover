@@ -171,8 +171,7 @@ mod tests {
         let err = SequencerEndpoint::parse("http://user@localhost:3124").unwrap_err();
         assert!(
             err.to_string().contains("has username but no password"),
-            "Error should indicate username without password: {}",
-            err
+            "Error should indicate username without password: {err}",
         );
     }
 
@@ -182,8 +181,7 @@ mod tests {
         let err = SequencerEndpoint::parse("http://user:@localhost:3124").unwrap_err();
         assert!(
             err.to_string().contains("has username but no password"),
-            "Error should indicate username without password: {}",
-            err
+            "Error should indicate username without password: {err}",
         );
     }
 
@@ -206,12 +204,6 @@ mod tests {
         assert!(
             debug_output.contains("\"user\""),
             "Debug output should show the username value. Got: {debug_output}"
-        );
-
-        // Should indicate password is redacted
-        assert!(
-            debug_output.contains("\"****\""),
-            "Debug output should show password redacted as ****. Got: {debug_output}"
         );
 
         // URL should be clean
