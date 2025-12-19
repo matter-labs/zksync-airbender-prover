@@ -62,6 +62,7 @@ const V4: ProtocolVersion = ProtocolVersion {
 };
 
 /// Corresponds to server's execution_version 5 (or v1.3)
+#[allow(dead_code)]
 const V5: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
         "0x996b02b1d0420e997b4dc0d629a3a1bba93ed3185ac463f17b02ff83be139581",
@@ -72,6 +73,17 @@ const V5: ProtocolVersion = ProtocolVersion {
     bin_md5sum: BinMd5Sum("a2421384eb817ba2649f1438dc321d54"),
 };
 
+/// Corresponds to server's execution_version 6 (or v1.3.1)
+const V6: ProtocolVersion = ProtocolVersion {
+    vk_hash: VerificationKeyHash(
+        "0x124ebcd537a1e1c152774dd18f67660e35625bba0b669bf3b4836d636b105337",
+    ),
+    airbender_version: AirbenderVersion("v0.5.2"),
+    zksync_os_version: ZkSyncOSVersion("v0.2.5"),
+    zkos_wrapper: ZkOsWrapperVersion("v0.5.4"),
+    bin_md5sum: BinMd5Sum("e77ced130723f3e52099658d589a8454"),
+};
+
 /// Represents the set of supported protocol versions by this prover implementation.
 #[derive(Debug)]
 pub struct SupportedProtocolVersions {
@@ -80,7 +92,7 @@ pub struct SupportedProtocolVersions {
 
 impl Default for SupportedProtocolVersions {
     fn default() -> Self {
-        Self { versions: vec![V5] }
+        Self { versions: vec![V6] }
     }
 }
 
