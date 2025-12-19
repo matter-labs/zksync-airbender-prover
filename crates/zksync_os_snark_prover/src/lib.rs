@@ -342,21 +342,20 @@ pub async fn run_inner(
     serialize_to_file(&final_proof, &one_fri_path);
 
     tracing::info!("SNARKifying proof");
-    let snark_proof = stats.measure_step(SnarkStage::Snark, || {
-        prove(
-            one_fri_path.into_os_string().into_string().unwrap(),
-            output_dir.clone(),
-            Some(trusted_setup_file.clone()),
-            false,
-            #[cfg(feature = "gpu")]
-            Some(precomputations),
-            // note that the API is use_zk, so we invert the disable_zk flag
-            !disable_zk,
-        )
-    });
-
-    match snark_proof {
+    let start = Instant::now();
+    match prove(
+        one_fri_path.into_os_string().into_string().unwrap(),
+        output_dir.clone(),
+        Some(trusted_setup_file.clone()),
+        false,
+        #[cfg(feature = "gpu")]
+        Some(precomputations),
+        // note that the API is use_zk, so we invert the disable_zk flag
+        !disable_zk,
+    ) {
         Ok(()) => {
+            stats.observe_step(SnarkStage::Snark, start.elapsed());
+
             stats.observe_full();
 
             tracing::info!("Finished generating proof, time stats: {}", stats);
