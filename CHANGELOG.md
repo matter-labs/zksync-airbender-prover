@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.6.1...v0.7.0) (2025-12-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* Update provers to v1.3.1 ([#115](https://github.com/matter-labs/zksync-airbender-prover/issues/115))
+
+### Features
+
+* Centralize timing metrics and improve retry logs ([#107](https://github.com/matter-labs/zksync-airbender-prover/issues/107)) ([ba7b320](https://github.com/matter-labs/zksync-airbender-prover/commit/ba7b320ffa0a3bbc0db3e559f44a28d4d63bcd7f))
+* Update provers to v1.3.1 ([#115](https://github.com/matter-labs/zksync-airbender-prover/issues/115)) ([0d31170](https://github.com/matter-labs/zksync-airbender-prover/commit/0d311705c1bf50e97f02cd07b96db593edb768bd))
+
+
+### Bug Fixes
+
+* Add sequencer URL into error output ([#113](https://github.com/matter-labs/zksync-airbender-prover/issues/113)) ([c919e94](https://github.com/matter-labs/zksync-airbender-prover/commit/c919e94ebccca2799ba5adab461c29314d57032e))
+* Properly sanitize credentials in seq URLs ([#109](https://github.com/matter-labs/zksync-airbender-prover/issues/109)) ([f84d183](https://github.com/matter-labs/zksync-airbender-prover/commit/f84d183eba5cefa5e9f6b7321af685234297851e))
+* **prover:** Ensure round-robin works as intended ([#111](https://github.com/matter-labs/zksync-airbender-prover/issues/111)) ([abd5afc](https://github.com/matter-labs/zksync-airbender-prover/commit/abd5afc79c9b57d2e1417ebc233d1874cb951c13))
+* use default headers for Basic Auth ([#114](https://github.com/matter-labs/zksync-airbender-prover/issues/114)) ([da9d64b](https://github.com/matter-labs/zksync-airbender-prover/commit/da9d64b7fc9872c72361637f7424ec8ca19c6af5))
+
 ## [0.6.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.6.0...v0.6.1) (2025-11-21)
 
 
