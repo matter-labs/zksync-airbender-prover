@@ -306,12 +306,13 @@ pub async fn run_inner(
         .latest_proven_batch
         .set(batch_number as i64);
 
-    let proof_time = started_at.elapsed().as_secs_f64();
+    let proof_time = started_at.elapsed();
+    let proof_time_s = proof_time.as_secs_f64();
 
-    FRI_PROVER_METRICS.time_taken.observe(proof_time);
+    FRI_PROVER_METRICS.time_taken.observe(proof_time_s);
 
     match client
-        .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
+        .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64, Some(proof_time))
         .await
     {
         Ok(_) => {
@@ -320,7 +321,7 @@ pub async fn run_inner(
                 batch_number,
                 vk_hash,
                 client.sequencer_url(),
-                proof_time
+                proof_time_s,
             );
             Ok(true)
         }

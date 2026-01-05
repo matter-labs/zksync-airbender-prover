@@ -301,6 +301,9 @@ pub async fn run_inner(
         start_batch,
         end_batch,
     );
+
+    let job_started_at = Instant::now();
+
     tracing::info!("Initializing GPU state");
     #[cfg(feature = "gpu")]
     let mut gpu_state_store = GpuSharedState::new(
@@ -342,7 +345,7 @@ pub async fn run_inner(
     serialize_to_file(&final_proof, &one_fri_path);
 
     tracing::info!("SNARKifying proof");
-    let start = Instant::now();
+    let snark_start = Instant::now();
     match prove(
         one_fri_path.into_os_string().into_string().unwrap(),
         output_dir.clone(),
@@ -354,7 +357,7 @@ pub async fn run_inner(
         !disable_zk,
     ) {
         Ok(()) => {
-            stats.observe_step(SnarkStage::Snark, start.elapsed());
+            stats.observe_step(SnarkStage::Snark, snark_start.elapsed());
 
             stats.observe_full();
 
@@ -373,7 +376,13 @@ pub async fn run_inner(
     );
 
     match client
-        .submit_snark_proof(start_batch, end_batch, vk_hash.clone(), snark_proof)
+        .submit_snark_proof(
+            start_batch,
+            end_batch,
+            vk_hash.clone(),
+            snark_proof,
+            Some(job_started_at.elapsed()),
+        )
         .await
     {
         Ok(()) => {

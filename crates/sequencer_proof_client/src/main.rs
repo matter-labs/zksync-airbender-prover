@@ -159,7 +159,7 @@ async fn main() -> Result<()> {
             let file = std::fs::File::open(path)?;
             let fri_proof: String = serde_json::from_reader(file)?;
             client
-                .submit_fri_proof(batch_number, vk_hash, fri_proof)
+                .submit_fri_proof(batch_number, vk_hash, fri_proof, None)
                 .await?;
             tracing::info!(
                 "Submitted FRI proof for batch {batch_number} to sequencer at {}",
@@ -204,6 +204,7 @@ async fn main() -> Result<()> {
                     L2BatchNumber(to_batch_number),
                     vk_hash,
                     snark_wrapper,
+                    None,
                 )
                 .await?;
             tracing::info!("Submitted proof for batches [{from_batch_number}, {to_batch_number}] to sequencer at {}", url);

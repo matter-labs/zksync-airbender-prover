@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::time::Duration;
 use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
@@ -39,6 +40,7 @@ struct SubmitFriProofPayload {
     batch_number: u64,
     vk_hash: String,
     proof: String,
+    time_taken_prover_end: Option<Duration>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,6 +57,7 @@ struct SubmitSnarkProofPayload {
     to_batch_number: u64,
     vk_hash: String,
     proof: String, // base64‑encoded SNARK proof
+    time_taken_prover_end: Option<Duration>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -127,6 +130,7 @@ pub trait ProofClient: Send + Sync {
         batch_number: u32,
         vk_hash: String,
         proof: String,
+        time_taken_prover_end: Option<Duration>,
     ) -> anyhow::Result<()>;
 
     /// Fetch the next SNARK job to prove.
@@ -140,6 +144,7 @@ pub trait ProofClient: Send + Sync {
         to_batch_number: L2BatchNumber,
         vk_hash: String,
         proof: SnarkWrapperProof,
+        time_taken_prover_end: Option<Duration>,
     ) -> anyhow::Result<()>;
 }
 

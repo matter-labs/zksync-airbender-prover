@@ -189,6 +189,7 @@ impl ProofClient for SequencerProofClient {
         batch_number: u32,
         vk_hash: String,
         proof: String,
+        time_taken_prover_end: Option<Duration>,
     ) -> anyhow::Result<()> {
         let url = self.build_url(&format!("FRI/submit?id={}", self.prover_name))?;
 
@@ -196,6 +197,7 @@ impl ProofClient for SequencerProofClient {
             batch_number: batch_number as u64,
             vk_hash,
             proof,
+            time_taken_prover_end,
         };
 
         let started_at = Instant::now();
@@ -257,6 +259,7 @@ impl ProofClient for SequencerProofClient {
         to_batch_number: L2BatchNumber,
         vk_hash: String,
         proof: SnarkWrapperProof,
+        time_taken_prover_end: Option<Duration>,
     ) -> anyhow::Result<()> {
         let url = self.build_url(&format!("SNARK/submit?id={}", self.prover_name))?;
 
@@ -271,6 +274,7 @@ impl ProofClient for SequencerProofClient {
             to_batch_number: to_batch_number.0 as u64,
             vk_hash,
             proof: serialized_proof,
+            time_taken_prover_end,
         };
         self.client
             .post(url.clone())
