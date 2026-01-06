@@ -16,6 +16,7 @@ ignore = [
     "RUSTSEC-2021-0139",
     "RUSTSEC-2024-0388", # `derivative` is unmaintained, crypto dependenicies (boojum, circuit_encodings and others) rely on it
     "RUSTSEC-2024-0436", # `paste` is an unmaintained dependency of various crates (like alloy-primitives, sqlx-core)
+    "RUSTSEC-2025-0137", # unsoundness in reciprocal_mg10 - not used by our code
 ]
 
 [licenses]
