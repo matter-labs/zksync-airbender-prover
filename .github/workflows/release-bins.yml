@@ -24,7 +24,7 @@ on:
 
 env:
   ZKSYNC_OS_PROVER_BIN: 'zksync-os-prover-service'
-  RELEASE_PROFILE: 'maxperf'
+  RELEASE_PROFILE: 'release'
 
 defaults:
   run:
