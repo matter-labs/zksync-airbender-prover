@@ -88,9 +88,9 @@ jobs:
           # Build static binaries
           RUSTFLAGS: '-C target-feature=+crt-static'
         run: |
-          GPU_FEATURES=""
+          GPU_FEATURES=''
           if [[ "${{ matrix.gpu }}" == "true" ]]; then
-              GPU_FEATURES="--features gpu"
+              GPU_FEATURES='--features gpu'
           fi
           cargo build --profile "${RELEASE_PROFILE}" \
             --target "${{ matrix.target }}" --bin "${ZKSYNC_OS_PROVER_BIN}" "${GPU_FEATURES}"
