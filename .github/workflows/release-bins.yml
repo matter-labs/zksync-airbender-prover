@@ -41,8 +41,6 @@ jobs:
           # Ubuntu-22.04 based high performance runner, CPU prover
           - runner: matterlabs-ci-runner-high-performance
             target: x86_64-unknown-linux-gnu
-            gpu: false
-            container: null
           # Ubuntu-22.04 based high performance runner, GPU prover
           - runner: matterlabs-ci-runner-ultra-performance
             target: x86_64-unknown-linux-gnu
@@ -51,18 +49,12 @@ jobs:
           # Ubuntu-22.04 based ARM linux runner, CPU prover
           - runner: matterlabs-ci-runner-arm
             target: aarch64-unknown-linux-gnu
-            gpu: false
-            container: null
           # Latest x86 macos runner, CPU prover
           - runner: macos-latest-large
             target: x86_64-apple-darwin
-            gpu: false
-            container: null
           # Latest ARM (M-series) macos runner, CPU prover
           - runner: macos-latest-xlarge
             target: aarch64-apple-darwin
-            gpu: false
-            container: null
 
     steps:
       - name: Checkout code
@@ -76,8 +68,6 @@ jobs:
       - name: Install linux packages
         if: ${{ runner.os == 'Linux' }}
         run: |
-          sudo apt update && sudo apt --assume-yes install \
-            curl jq libssl-dev libclang-dev pkg-config build-essential
           if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
             sudo dpkg --add-architecture arm64
             sudo apt --assume-yes install libssl-dev:arm64
@@ -147,6 +137,7 @@ jobs:
         with:
           name: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == true && 'gpu' || 'cpu' }}.tar.gz
           path: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == true && 'gpu' || 'cpu' }}.tar.gz
+          retention-days: 1
 
   # Attach binaries to the GitHub release
   release-bins:
@@ -185,6 +176,7 @@ jobs:
         with:
           name: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz
           path: dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz
+          retention-days: 1
 
       - name: Binaries attestation
         id: attestation
