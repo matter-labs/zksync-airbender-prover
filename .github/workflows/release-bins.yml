@@ -25,6 +25,7 @@ on:
 env:
   ZKSYNC_OS_PROVER_BIN: 'zksync-os-prover-service'
   RELEASE_PROFILE: 'release'
+  CUDAARCHS: '80;89;90'
 
 defaults:
   run:
