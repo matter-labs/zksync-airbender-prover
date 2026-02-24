@@ -89,7 +89,7 @@ jobs:
           RUSTFLAGS: '-C target-feature=+crt-static'
         run: |
           cargo build --profile "${RELEASE_PROFILE}" \
-            --target "${{ matrix.target }}" --bin "${ZKSYNC_OS_PROVER_BIN}" "${{ matrix.gpu == 'true' && '--features gpu' || '' }}"
+            --target "${{ matrix.target }}" --bin "${ZKSYNC_OS_PROVER_BIN}" "${{ matrix.gpu == 'true' && '--features gpu' }}"
 
       - name: Prepare tarballs
         run: |
