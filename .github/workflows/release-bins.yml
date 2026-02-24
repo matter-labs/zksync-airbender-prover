@@ -127,14 +127,14 @@ jobs:
       - name: Prepare tarballs
         run: |
           mv ./target/${{ matrix.target }}/${RELEASE_PROFILE}/${ZKSYNC_OS_PROVER_BIN} ./${ZKSYNC_OS_PROVER_BIN}
-          tar -czf ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == 'true' && 'gpu' || 'cpu' }}.tar.gz \
+          tar -czf ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == true && 'gpu' || 'cpu' }}.tar.gz \
               ${{ env.ZKSYNC_OS_PROVER_BIN }}
 
       - name: Upload binaries
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == 'true' && 'gpu' || 'cpu' }}.tar.gz
-          path: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == 'true' && 'gpu' || 'cpu' }}.tar.gz
+          name: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == true && 'gpu' || 'cpu' }}.tar.gz
+          path: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == true && 'gpu' || 'cpu' }}.tar.gz
 
   # Attach binaries to the GitHub release
   release-bins:
