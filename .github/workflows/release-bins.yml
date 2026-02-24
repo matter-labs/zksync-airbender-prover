@@ -34,6 +34,8 @@ jobs:
   # Build prover binary for all target platforms
   build-bins:
     runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,10 +44,12 @@ jobs:
           - runner: matterlabs-ci-runner-high-performance
             target: x86_64-unknown-linux-gnu
             gpu: false
+            container: null
           # Ubuntu-22.04 based high performance runner, GPU prover
           - runner: matterlabs-ci-runner-ultra-performance
             target: x86_64-unknown-linux-gnu
             gpu: true
+            container: nvidia/cuda:12.9.1-devel-ubuntu22.04
 
     steps:
       - name: Checkout code
