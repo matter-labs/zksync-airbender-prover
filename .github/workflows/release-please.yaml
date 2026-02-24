@@ -29,3 +29,12 @@ jobs:
       manifest: '.github/release-please/manifest.json'      # Path to the manifest file
       update-cargo-lock: true                               # Update Cargo.lock file in the release PR
       publish-to-crates-io: false                           # Enable publishing to crates.io
+
+  # Trigger workflow to generate artifacts
+  release-bins:
+    if: ${{ always() && needs.release-please.outputs.releases_created == 'true' }}
+    needs: release-please
+    uses: ./.github/workflows/release-bins.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
