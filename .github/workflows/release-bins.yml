@@ -48,6 +48,21 @@ jobs:
             target: x86_64-unknown-linux-gnu
             gpu: true
             container: nvidia/cuda:12.9.1-devel-ubuntu22.04
+          # Ubuntu-22.04 based ARM linux runner, CPU prover
+          - runner: matterlabs-ci-runner-arm
+            target: aarch64-unknown-linux-gnu
+            gpu: false
+            container: null
+          # Latest x86 macos runner, CPU prover
+          - runner: macos-latest-large
+            target: x86_64-apple-darwin
+            gpu: false
+            container: null
+          # Latest ARM (M-series) macos runner, CPU prover
+          - runner: macos-latest-xlarge
+            target: aarch64-apple-darwin
+            gpu: false
+            container: null
 
     steps:
       - name: Checkout code
