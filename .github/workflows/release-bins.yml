@@ -90,7 +90,7 @@ jobs:
         run: |
           if [[ "${{ matrix.gpu }}" == "true" ]]; then
               cargo build --profile "${RELEASE_PROFILE}" \
-                --target "${{ matrix.target }}" --bin "${ZKSYNC_OS_PROVER_BIN}" --feature gpu
+                --target "${{ matrix.target }}" --bin "${ZKSYNC_OS_PROVER_BIN}" --features gpu
           else
               cargo build --profile "${RELEASE_PROFILE}" \
                 --target "${{ matrix.target }}" --bin "${ZKSYNC_OS_PROVER_BIN}"
