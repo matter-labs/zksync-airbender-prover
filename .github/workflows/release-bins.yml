@@ -18,9 +18,6 @@ on:
         description: "Tag to use for the release."
         type: string
         required: true
-  push:
-    branches:
-      - release-bins
 
 env:
   ZKSYNC_OS_PROVER_BIN: 'zksync-os-prover-service'
