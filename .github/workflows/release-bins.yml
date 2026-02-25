@@ -18,6 +18,9 @@ on:
         description: "Tag to use for the release."
         type: string
         required: true
+  push:
+    branches:
+      - di/release-bins-test
 
 env:
   ZKSYNC_OS_PROVER_BIN: 'zksync-os-prover-service'
@@ -139,71 +142,71 @@ jobs:
           path: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${{ matrix.target }}-${{ matrix.gpu == true && 'gpu' || 'cpu' }}.tar.gz
           retention-days: 1
 
-  # Attach binaries to the GitHub release
-  release-bins:
-    needs: [build-bins]
-    # Run on macOS to combine binaries into a single one for macOS
-    runs-on: macos-latest-xlarge
-    steps:
-
-      - name: Checkout code
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          ref: ${{ inputs.tag || '' }}
-
-      - name: Download binaries
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          pattern: ${{ env.ZKSYNC_OS_PROVER_BIN }}-*.tar.gz
-          path: dist
-          merge-multiple: true
-
-      - name: Create universal macOS binary
-        run: |
-          find .
-          for TARGET in x86_64-apple-darwin aarch64-apple-darwin; do
-            tar xzf dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${TARGET}-cpu.tar.gz
-            mv ${{ env.ZKSYNC_OS_PROVER_BIN }} ${{ env.ZKSYNC_OS_PROVER_BIN }}-${TARGET}-cpu
-            rm -f dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${TARGET}-cpu.tar.gz
-          done
-          lipo -create -o "${{ env.ZKSYNC_OS_PROVER_BIN }}" \
-            ${{ env.ZKSYNC_OS_PROVER_BIN }}-x86_64-apple-darwin-cpu ${{ env.ZKSYNC_OS_PROVER_BIN }}-aarch64-apple-darwin-cpu
-          tar -czf dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz \
-            ${{ env.ZKSYNC_OS_PROVER_BIN }}
-
-      - name: Upload binaries
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz
-          path: dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz
-          retention-days: 1
-
-      - name: Binaries attestation
-        id: attestation
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
-        with:
-          subject-path: 'dist/**'
-
-      - name: Upload artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ inputs.tag }}" dist/* --clobber
-
-      - name: Update release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          REALASE_BODY=$(gh release view "${{ inputs.tag }}" --json body -q '.body')
-          BINARIES_SECTION=$(cat <<- "ENDBODY"
-          ## Binaries
-          
-          | System | Architecture | Binary | Attestation |
-          |:---:|:---:|:---:|:---|
-          | <img src="https://www.svgrepo.com/download/448236/linux.svg" width="50"/> | x86_64 (GPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-gpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-gpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
-          | <img src="https://www.svgrepo.com/download/448236/linux.svg" width="50"/> | x86_64 (CPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-cpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-cpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
-          | <img src="https://www.svgrepo.com/download/448236/linux.svg" width="50"/> | aarch64 (CPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-aarch64-unknown-linux-gnu-cpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-aarch64-unknown-linux-gnu-cpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
-          | <img src="https://www.svgrepo.com/download/475429/apple.svg" width="50"/> | universal (CPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
-          ENDBODY
-          )
-          echo -e "${REALASE_BODY}\n\n${BINARIES_SECTION}" > updated_body.md
-          gh release edit "${{ inputs.tag }}" --notes-file updated_body.md
+#  # Attach binaries to the GitHub release
+#  release-bins:
+#    needs: [build-bins]
+#    # Run on macOS to combine binaries into a single one for macOS
+#    runs-on: macos-latest-xlarge
+#    steps:
+#
+#      - name: Checkout code
+#        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+#        with:
+#          ref: ${{ inputs.tag || '' }}
+#
+#      - name: Download binaries
+#        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+#        with:
+#          pattern: ${{ env.ZKSYNC_OS_PROVER_BIN }}-*.tar.gz
+#          path: dist
+#          merge-multiple: true
+#
+#      - name: Create universal macOS binary
+#        run: |
+#          find .
+#          for TARGET in x86_64-apple-darwin aarch64-apple-darwin; do
+#            tar xzf dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${TARGET}-cpu.tar.gz
+#            mv ${{ env.ZKSYNC_OS_PROVER_BIN }} ${{ env.ZKSYNC_OS_PROVER_BIN }}-${TARGET}-cpu
+#            rm -f dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-${TARGET}-cpu.tar.gz
+#          done
+#          lipo -create -o "${{ env.ZKSYNC_OS_PROVER_BIN }}" \
+#            ${{ env.ZKSYNC_OS_PROVER_BIN }}-x86_64-apple-darwin-cpu ${{ env.ZKSYNC_OS_PROVER_BIN }}-aarch64-apple-darwin-cpu
+#          tar -czf dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz \
+#            ${{ env.ZKSYNC_OS_PROVER_BIN }}
+#
+#      - name: Upload binaries
+#        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+#        with:
+#          name: ${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz
+#          path: dist/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz
+#          retention-days: 1
+#
+#      - name: Binaries attestation
+#        id: attestation
+#        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+#        with:
+#          subject-path: 'dist/**'
+#
+#      - name: Upload artifacts
+#        env:
+#          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: gh release upload "${{ inputs.tag }}" dist/* --clobber
+#
+#      - name: Update release
+#        env:
+#          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          REALASE_BODY=$(gh release view "${{ inputs.tag }}" --json body -q '.body')
+#          BINARIES_SECTION=$(cat <<- "ENDBODY"
+#          ## Binaries
+#
+#          | System | Architecture | Binary | Attestation |
+#          |:---:|:---:|:---:|:---|
+#          | <img src="https://www.svgrepo.com/download/448236/linux.svg" width="50"/> | x86_64 (GPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-gpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-gpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
+#          | <img src="https://www.svgrepo.com/download/448236/linux.svg" width="50"/> | x86_64 (CPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-cpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-x86_64-unknown-linux-gnu-cpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
+#          | <img src="https://www.svgrepo.com/download/448236/linux.svg" width="50"/> | aarch64 (CPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-aarch64-unknown-linux-gnu-cpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-aarch64-unknown-linux-gnu-cpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
+#          | <img src="https://www.svgrepo.com/download/475429/apple.svg" width="50"/> | universal (CPU) | [${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/${{ env.ZKSYNC_OS_PROVER_BIN }}-${{ inputs.tag }}-universal-apple-darwin-cpu.tar.gz) | [Attestation](${{ steps.attestation.outputs.attestation-url }}) |
+#          ENDBODY
+#          )
+#          echo -e "${REALASE_BODY}\n\n${BINARIES_SECTION}" > updated_body.md
+#          gh release edit "${{ inputs.tag }}" --notes-file updated_body.md
