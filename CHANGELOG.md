@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.7.0...v0.7.1) (2026-02-26)
+
+
+### Features
+
+* add release-bins.yaml ([#118](https://github.com/matter-labs/zksync-airbender-prover/issues/118)) ([f403358](https://github.com/matter-labs/zksync-airbender-prover/commit/f4033580701eb7cfc11d527bc1b6368aa6e068b8))
+
 ## [0.7.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.6.1...v0.7.0) (2025-12-19)
 
 
