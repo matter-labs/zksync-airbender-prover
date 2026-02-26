@@ -30,6 +30,37 @@ runs:
   using: composite
   steps:
 
+    - name: Install linux packages
+      shell: 'bash -ex {0}'
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        if command -v sudo >/dev/null 2>&1; then
+          SUDO=sudo
+        fi
+        ${SUDO} apt update && ${SUDO} apt install -y libclang-dev wget jq libssl-dev pkg-config
+
+    - name: Add cuda to path
+      shell: 'bash -ex {0}'
+      if: ${{ contains(runner.name, 'gpu') }}
+      run: echo "/usr/local/nvidia/bin:/usr/local/cuda/bin" >> "${GITHUB_PATH}"
+
+    - name: Install cmake
+      if: ${{ contains(runner.name, 'hetzner') }}
+      shell: 'bash -ex {0}'
+      env:
+        CMAKE_VERSION: '4.1.1'
+        CMAKE_URL: 'https://github.com/Kitware/CMake/releases/download/'
+      run: |
+        CMAKE_FILENAME="cmake-${CMAKE_VERSION}-linux-x86_64"
+        wget --no-verbose "${CMAKE_URL}/v${CMAKE_VERSION}/${CMAKE_FILENAME}.tar.gz"
+        tar xzf "${CMAKE_FILENAME}.tar.gz"
+        echo "${PWD}/${CMAKE_FILENAME}/bin" >> "${GITHUB_PATH}"
+        export PATH="${PWD}/${CMAKE_FILENAME}/bin:${PATH}"
+        which cmake
+        cmake --version
+
     - name: Install sccache
       if: ${{ contains(runner.name, 'matterlabs') }}
       shell: 'bash -ex {0}'
