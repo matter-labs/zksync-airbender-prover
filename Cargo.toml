@@ -38,7 +38,7 @@ proof-compression = "=0.155.2"
 circuit_definitions = "=0.153.3"
 
 # zksync-crypto dependencies
-bellman = { package = "zksync_bellman", version = "=0.32.5" }
+bellman = { package = "zksync_bellman", version = "=0.32.10" }
 crypto_codegen = { package = "zksync_solidity_vk_codegen", version = "=0.32.5" }
 
 # external dependencies
