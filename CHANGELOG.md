@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.7.1...v0.7.2) (2026-03-11)
+
+
+### Bug Fixes
+
+* Ensure SNARK can't loop forever ([#124](https://github.com/matter-labs/zksync-airbender-prover/issues/124)) ([1bfa8ac](https://github.com/matter-labs/zksync-airbender-prover/commit/1bfa8ac434883ca97fc987c15a49ae533c89a1bd))
+
 ## [0.7.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.7.0...v0.7.1) (2026-02-26)
 
 
