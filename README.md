@@ -101,6 +101,7 @@ RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_prov
 
 Specify optional `--iterations` argument to run SNARK prover N times and then exit.
 Specify `--max-snark-latency` OR `--max-fris-per-snark` to define latency (in seconds) OR max amount FRI proofs per SNARK for exiting FRI prover and starting SNARK prover. You can not specify them both in the same time.
+Specify `--snark-acquire-timeout-secs` to return to FRI proving if no SNARK job becomes available after switching modes.
 
 ## Development / WIP
 

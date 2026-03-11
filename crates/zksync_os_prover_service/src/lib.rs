@@ -2,8 +2,9 @@
 // SNARK & FRI should be libs only and expose no binaries themselves.
 // We'll need slightly more "involved" CLI args, but nothing too complex.
 use std::{
+    future::Future,
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use anyhow::Context;
@@ -34,6 +35,9 @@ pub struct Args {
     /// Max amount of FRI proofs per SNARK (default value - 100)
     #[arg(long, default_value = "100", conflicts_with = "max_snark_latency")]
     pub max_fris_per_snark: Option<usize>,
+    /// Max time to wait for a SNARK job after switching away from FRI proving
+    #[arg(long, default_value = "60")]
+    pub snark_acquire_timeout_secs: u64,
     /// Sequencer URL(s) for polling tasks. Comma-separated for round-robin.
     ///
     /// Format: http[s]://[username:password@]host:port
@@ -72,6 +76,31 @@ pub struct Args {
     /// Disable ZK for SNARK proofs
     #[arg(long, default_value_t = false)]
     pub disable_zk: bool,
+}
+
+const SNARK_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+async fn acquire_snark_proof<F, Fut>(
+    snark_acquire_timeout: Duration,
+    poll_interval: Duration,
+    mut run_snark_attempt: F,
+) -> anyhow::Result<bool>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = anyhow::Result<bool>>,
+{
+    let started_at = Instant::now();
+    loop {
+        if run_snark_attempt().await? {
+            return Ok(true);
+        }
+
+        if started_at.elapsed() >= snark_acquire_timeout {
+            return Ok(false);
+        }
+
+        tokio::time::sleep(poll_interval).await;
+    }
 }
 
 pub fn init_tracing() {
@@ -169,27 +198,36 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             "Running SNARK prover on sequencer {}",
             client.sequencer_url()
         );
-        loop {
-            let proof_generated = zksync_os_snark_prover::run_inner(
-                client.as_ref(),
-                &verifier_binary,
-                args.output_dir.clone(),
-                args.trusted_setup_file.clone(),
-                #[cfg(feature = "gpu")]
-                &precomputations,
-                args.disable_zk,
-                &supported_versions,
-            )
-            .await
-            .expect("Failed to run SNARK prover");
-
-            if proof_generated {
-                // Increment SNARK proof counter
-                tracing::info!("Successfully run SNARK prover");
-                snark_proof_count += proof_generated as usize;
-                snark_latency = Instant::now();
-                break;
+        let proof_generated = acquire_snark_proof(
+            Duration::from_secs(args.snark_acquire_timeout_secs),
+            SNARK_POLL_INTERVAL,
+            || {
+                zksync_os_snark_prover::run_inner(
+                    client.as_ref(),
+                    &verifier_binary,
+                    args.output_dir.clone(),
+                    args.trusted_setup_file.clone(),
+                    #[cfg(feature = "gpu")]
+                    &precomputations,
+                    args.disable_zk,
+                    &supported_versions,
+                )
             }
+        )
+        .await
+        .expect("Failed to run SNARK prover");
+
+        if proof_generated {
+            // Increment SNARK proof counter
+            tracing::info!("Successfully run SNARK prover");
+            snark_proof_count += proof_generated as usize;
+            snark_latency = Instant::now();
+        } else {
+            tracing::info!(
+                "No SNARK proof was generated within snark_acquire_timeout_secs ({} seconds), returning to FRI prover",
+                args.snark_acquire_timeout_secs
+            );
+            snark_latency = Instant::now();
         }
 
         // Check if we've reached the iteration limit
@@ -202,4 +240,60 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn snark_acquire_times_out_instead_of_looping_forever() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_closure = attempts.clone();
+
+        let acquired = tokio::time::timeout(
+            Duration::from_millis(100),
+            acquire_snark_proof(Duration::from_millis(20), Duration::from_millis(1), move || {
+                let attempts = attempts_for_closure.clone();
+                async move {
+                    attempts.fetch_add(1, Ordering::Relaxed);
+                    Ok(false)
+                }
+            }),
+        )
+        .await
+        .expect("snark acquisition should time out rather than loop forever")
+        .expect("snark acquisition should not error");
+
+        assert!(!acquired);
+        assert!(attempts.load(Ordering::Relaxed) >= 1);
+    }
+
+    #[tokio::test]
+    async fn snark_acquire_succeeds_before_timeout() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_closure = attempts.clone();
+
+        let acquired = acquire_snark_proof(
+            Duration::from_millis(100),
+            Duration::from_millis(1),
+            move || {
+                let attempts = attempts_for_closure.clone();
+                async move {
+                    let attempt = attempts.fetch_add(1, Ordering::Relaxed);
+                    Ok(attempt >= 2)
+                }
+            },
+        )
+        .await
+        .expect("snark acquisition should not error");
+
+        assert!(acquired);
+        assert!(attempts.load(Ordering::Relaxed) >= 3);
+    }
 }
