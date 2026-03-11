@@ -212,7 +212,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     args.disable_zk,
                     &supported_versions,
                 )
-            }
+            },
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -258,13 +258,17 @@ mod tests {
 
         let acquired = tokio::time::timeout(
             Duration::from_millis(100),
-            acquire_snark_proof(Duration::from_millis(20), Duration::from_millis(1), move || {
-                let attempts = attempts_for_closure.clone();
-                async move {
-                    attempts.fetch_add(1, Ordering::Relaxed);
-                    Ok(false)
-                }
-            }),
+            acquire_snark_proof(
+                Duration::from_millis(20),
+                Duration::from_millis(1),
+                move || {
+                    let attempts = attempts_for_closure.clone();
+                    async move {
+                        attempts.fetch_add(1, Ordering::Relaxed);
+                        Ok(false)
+                    }
+                },
+            ),
         )
         .await
         .expect("snark acquisition should time out rather than loop forever")
