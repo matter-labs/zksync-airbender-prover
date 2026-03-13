@@ -96,7 +96,7 @@ Specify --path argument to override default location.
 ulimit -s 300000
 
 # start prover service
-RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_prover_service -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs --max-snark-latency 3600
+RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync-os-prover-service -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs --max-snark-latency 3600
 ```
 
 Specify optional `--iterations` argument to run SNARK prover N times and then exit.
