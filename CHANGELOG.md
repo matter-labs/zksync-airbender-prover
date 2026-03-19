@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.2](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.7.1...v0.7.2) (2026-03-19)
+
+
+### Features
+
+* Expose zksync-airbender-prover as image ([#127](https://github.com/matter-labs/zksync-airbender-prover/issues/127)) ([78310c5](https://github.com/matter-labs/zksync-airbender-prover/commit/78310c5434b8c65ac460d6d89ff851146a1eae1e))
+
+
+### Bug Fixes
+
+* Ensure SNARK can't loop forever ([#124](https://github.com/matter-labs/zksync-airbender-prover/issues/124)) ([1bfa8ac](https://github.com/matter-labs/zksync-airbender-prover/commit/1bfa8ac434883ca97fc987c15a49ae533c89a1bd))
+* Fix .dockerignore ([#128](https://github.com/matter-labs/zksync-airbender-prover/issues/128)) ([b5d660e](https://github.com/matter-labs/zksync-airbender-prover/commit/b5d660e81f5930092028835a46997921f963a11b))
+
 ## [0.7.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.7.0...v0.7.1) (2026-02-26)
 
 
