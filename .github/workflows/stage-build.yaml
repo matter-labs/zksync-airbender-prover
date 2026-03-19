@@ -38,6 +38,7 @@ jobs:
       fail-fast: false
       matrix:
         component:
+          - zksync-airbender-prover
           - zksync-os-prover-fri
           - zksync-os-prover-snark
     steps:
