@@ -88,10 +88,10 @@ const V6: ProtocolVersion = ProtocolVersion {
 /// Corresponds to server's execution_version 7
 const V7: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0x84e5659871dfede9c6419d586ca4e4c175dae2652109421fa1e5d11b48711422",
+        "0x739d5ed5fea55cb873fa1ba8d698a20f3fd0d9d2871228cd397c518c41d80e99",
     ),
     airbender_version: AirbenderVersion("v0.5.2"),
-    zksync_os_version: ZkSyncOSVersion("dev-20260318-2"),
+    zksync_os_version: ZkSyncOSVersion("dev-20260320"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.4"),
     bin_md5sum: BinMd5Sum("78195690333c20557cf8c53270c17038"),
 };
