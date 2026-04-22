@@ -12,6 +12,9 @@ categories.workspace = true
 
 [dependencies]
 
+# internal dependencies
+protocol_version.workspace = true
+
 # zksync-airbender dependencies
 zksync_airbender_execution_utils.workspace = true
 

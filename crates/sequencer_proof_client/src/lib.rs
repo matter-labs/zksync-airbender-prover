@@ -34,6 +34,14 @@ struct NextFriProverJobPayload {
     prover_input: String, // base64-encoded
 }
 
+/// Body sent on `POST /FRI/pick` and `POST /SNARK/pick`. The sequencer uses it
+/// to track which VK hashes each live prover can handle, so it can refuse to
+/// activate a protocol upgrade whose VK hash no prover supports.
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct PickJobRequest {
+    pub supported_vk_hashes: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct SubmitFriProofPayload {
     batch_number: u64,

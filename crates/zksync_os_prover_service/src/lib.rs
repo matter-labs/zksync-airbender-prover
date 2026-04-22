@@ -114,9 +114,16 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         args.sequencer_urls.len(),
         args.sequencer_urls
     );
-    let clients =
-        SequencerProofClient::new_clients(args.sequencer_urls, "prover_service".to_string(), None)
-            .context("failed to create sequencer proof clients")?;
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::info!("{:#?}", supported_versions);
+
+    let clients = SequencerProofClient::new_clients(
+        args.sequencer_urls,
+        "prover_service".to_string(),
+        supported_versions.vk_hashes(),
+        None,
+    )
+    .context("failed to create sequencer proof clients")?;
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -128,9 +135,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-
-    let supported_versions = SupportedProtocolVersions::default();
-    tracing::info!("{:#?}", supported_versions);
 
     #[cfg(feature = "gpu")]
     let precomputations = {

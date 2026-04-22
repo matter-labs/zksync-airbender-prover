@@ -5173,6 +5173,7 @@ dependencies = [
  "circuit_definitions",
  "clap",
  "execution_utils",
+ "protocol_version",
  "reqwest",
  "secrecy",
  "serde",
