@@ -111,7 +111,9 @@ impl SequencerProofClient {
                     supported_vk_hashes.clone(),
                     timeout,
                 )
-                .with_context(|| format!("Failed to create sequencer client #{i} at url {url:?}"))?;
+                .with_context(|| {
+                    format!("Failed to create sequencer client #{i} at url {url:?}")
+                })?;
 
                 Ok(Box::new(client) as Box<dyn ProofClient + Send + Sync>)
             })
