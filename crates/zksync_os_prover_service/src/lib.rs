@@ -35,6 +35,10 @@ pub struct Args {
     /// Max amount of FRI proofs per SNARK (default value - 100)
     #[arg(long, default_value = "100", conflicts_with = "max_snark_latency")]
     pub max_fris_per_snark: Option<usize>,
+    // SYSCOIN
+    /// SYSCOIN Switch to SNARK early when any sequencer has this many queued SNARK jobs. Set to 0 to disable.
+    #[arg(long, default_value = "80")]
+    pub adaptive_snark_queue_threshold: usize,
     /// SYSCOIN Max time to wait for a SNARK job after switching away from FRI proving
     #[arg(long, default_value = "120")]
     pub snark_acquire_timeout_secs: u64,
@@ -161,6 +165,48 @@ async fn ordered_client_indices_for_stage(
     scored.into_iter().map(|(idx, _, _, _)| idx).collect()
 }
 
+// SYSCOIN
+async fn snark_queue_pressure(
+    clients: &[Box<dyn zksync_sequencer_proof_client::ProofClient + Send + Sync>],
+    threshold: usize,
+) -> Option<(usize, usize, usize, u64)> {
+    if threshold == 0 {
+        return None;
+    }
+
+    let mut best: Option<(usize, usize, usize, u64)> = None;
+    for (idx, client) in clients.iter().enumerate() {
+        let Ok(statuses) = client.status(JobQueueStage::Snark).await else {
+            continue;
+        };
+        let total = statuses.len();
+        if total < threshold {
+            continue;
+        }
+
+        let unassigned = statuses
+            .iter()
+            .filter(|status| status.assigned_seconds_ago.is_none())
+            .count();
+        let oldest_seconds = statuses
+            .iter()
+            .map(|status| status.added_seconds_ago)
+            .max()
+            .unwrap_or_default();
+
+        let candidate = (idx, total, unassigned, oldest_seconds);
+        let replace_best = match best.as_ref() {
+            Some(current) => candidate.1 > current.1 || candidate.3 > current.3,
+            None => true,
+        };
+        if replace_best {
+            best = Some(candidate);
+        }
+    }
+
+    best
+}
+
 pub fn init_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     FmtSubscriber::builder().with_env_filter(filter).init();
@@ -229,6 +275,20 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                         break;
                     }
                 }
+                // SYSCOIN
+                if let Some((client_idx, total, unassigned, oldest_seconds)) =
+                    snark_queue_pressure(&clients, args.adaptive_snark_queue_threshold).await
+                {
+                    tracing::info!(
+                        sequencer_url = %clients[client_idx].sequencer_url(),
+                        total,
+                        unassigned,
+                        oldest_seconds,
+                        threshold = args.adaptive_snark_queue_threshold,
+                        "SNARK queue pressure reached adaptive threshold, switching to SNARK phase"
+                    );
+                    break;
+                }
                 continue;
             }
 
@@ -269,6 +329,20 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     );
                     break;
                 }
+            }
+            // SYSCOIN
+            if let Some((client_idx, total, unassigned, oldest_seconds)) =
+                snark_queue_pressure(&clients, args.adaptive_snark_queue_threshold).await
+            {
+                tracing::info!(
+                    sequencer_url = %clients[client_idx].sequencer_url(),
+                    total,
+                    unassigned,
+                    oldest_seconds,
+                    threshold = args.adaptive_snark_queue_threshold,
+                    "SNARK queue pressure reached adaptive threshold, switching to SNARK phase"
+                );
+                break;
             }
             if let Some(max_fris_per_snark) = args.max_fris_per_snark {
                 if fri_proof_count >= max_fris_per_snark {
@@ -506,5 +580,40 @@ mod tests {
         let ordered = ordered_client_indices_for_stage(&clients, JobQueueStage::Snark).await;
 
         assert_eq!(ordered, vec![4, 3, 2]);
+    }
+
+    #[tokio::test]
+    // SYSCOIN
+    async fn snark_queue_pressure_uses_largest_busy_queue() {
+        let clients: Vec<Box<dyn ProofClient + Send + Sync>> = vec![
+            Box::new(MockProofClient::statuses(
+                "http://below-threshold.local",
+                vec![QueueJobStatus {
+                    batch_number: 1,
+                    vk_hash: "vk-a".to_owned(),
+                    added_seconds_ago: 10,
+                    assigned_seconds_ago: None,
+                    assigned_to_prover_id: None,
+                    current_attempt: 0,
+                }],
+            )),
+            Box::new(MockProofClient::statuses(
+                "http://busy.local",
+                (0..3)
+                    .map(|idx| QueueJobStatus {
+                        batch_number: 10 + idx,
+                        vk_hash: "vk-b".to_owned(),
+                        added_seconds_ago: 20 + idx as u64,
+                        assigned_seconds_ago: None,
+                        assigned_to_prover_id: None,
+                        current_attempt: 0,
+                    })
+                    .collect(),
+            )),
+        ];
+
+        assert_eq!(snark_queue_pressure(&clients, 0).await, None);
+        assert_eq!(snark_queue_pressure(&clients, 4).await, None);
+        assert_eq!(snark_queue_pressure(&clients, 3).await, Some((1, 3, 3, 22)));
     }
 }
