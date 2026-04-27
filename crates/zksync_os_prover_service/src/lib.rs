@@ -179,24 +179,27 @@ async fn snark_queue_pressure(
         let Ok(statuses) = client.status(JobQueueStage::Snark).await else {
             continue;
         };
-        let total = statuses.len();
-        if total < threshold {
-            continue;
-        }
-
         let unassigned = statuses
             .iter()
             .filter(|status| status.assigned_seconds_ago.is_none())
             .count();
+        if unassigned < threshold {
+            continue;
+        }
+
+        let total = statuses.len();
         let oldest_seconds = statuses
             .iter()
+            .filter(|status| status.assigned_seconds_ago.is_none())
             .map(|status| status.added_seconds_ago)
             .max()
             .unwrap_or_default();
 
         let candidate = (idx, total, unassigned, oldest_seconds);
         let replace_best = match best.as_ref() {
-            Some(current) => candidate.1 > current.1 || candidate.3 > current.3,
+            Some(current) => {
+                candidate.2 > current.2 || candidate.2 == current.2 && candidate.3 > current.3
+            }
             None => true,
         };
         if replace_best {
@@ -587,6 +590,19 @@ mod tests {
     async fn snark_queue_pressure_uses_largest_busy_queue() {
         let clients: Vec<Box<dyn ProofClient + Send + Sync>> = vec![
             Box::new(MockProofClient::statuses(
+                "http://assigned-only.local",
+                (0..10)
+                    .map(|idx| QueueJobStatus {
+                        batch_number: idx,
+                        vk_hash: "vk-assigned".to_owned(),
+                        added_seconds_ago: 100 + idx as u64,
+                        assigned_seconds_ago: Some(1_000),
+                        assigned_to_prover_id: Some("other-prover".to_owned()),
+                        current_attempt: 1,
+                    })
+                    .collect(),
+            )),
+            Box::new(MockProofClient::statuses(
                 "http://below-threshold.local",
                 vec![QueueJobStatus {
                     batch_number: 1,
@@ -614,6 +630,6 @@ mod tests {
 
         assert_eq!(snark_queue_pressure(&clients, 0).await, None);
         assert_eq!(snark_queue_pressure(&clients, 4).await, None);
-        assert_eq!(snark_queue_pressure(&clients, 3).await, Some((1, 3, 3, 22)));
+        assert_eq!(snark_queue_pressure(&clients, 3).await, Some((2, 3, 3, 22)));
     }
 }
