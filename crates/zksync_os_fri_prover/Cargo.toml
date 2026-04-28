@@ -36,3 +36,6 @@ url.workspace = true
 
 [features]
 gpu = ["zksync_airbender_cli/gpu"]
+
+[dev-dependencies]
+async-trait.workspace = true

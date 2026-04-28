@@ -40,3 +40,6 @@ url.workspace = true
 
 [features]
 gpu = ["zksync_airbender_cli/gpu", "zkos_wrapper/gpu", "proof-compression/gpu"]
+
+[dev-dependencies]
+async-trait.workspace = true
