@@ -266,8 +266,9 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 mod tests {
     use async_trait::async_trait;
     use url::Url;
-    use zkos_wrapper::SnarkWrapperProof;
-    use zksync_sequencer_proof_client::{L2BatchNumber, QueueJobStatus, SnarkProofInputs};
+    use zksync_sequencer_proof_client::{
+        L2BatchNumber, QueueJobStatus, SnarkProofInputs, SnarkWrapperProof,
+    };
 
     use super::*;
 
