@@ -15,13 +15,28 @@ use zksync_airbender_cli::prover_utils::{
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{
-    FriJobInputs, JobQueueStage, ProofClient, SequencerEndpoint, SequencerProofClient,
+    FriJobInputs, JobQueueStage, ProofClient, QueueJobStatus, SequencerEndpoint,
+    SequencerProofClient,
 };
 
 use crate::metrics::FRI_PROVER_METRICS;
 
 pub mod metrics;
 // SYSCOIN
+fn head_queue_job(statuses: &[QueueJobStatus]) -> Option<(bool, u64, u32)> {
+    let head_unassigned = statuses
+        .iter()
+        .filter(|s| s.assigned_seconds_ago.is_none())
+        .min_by_key(|s| s.batch_number)
+        .map(|s| (true, s.added_seconds_ago, s.batch_number));
+    let head_any = statuses
+        .iter()
+        .min_by_key(|s| s.batch_number)
+        .map(|s| (false, s.added_seconds_ago, s.batch_number));
+
+    head_unassigned.or(head_any)
+}
+
 async fn ordered_fri_client_indices(clients: &[Box<dyn ProofClient + Send + Sync>]) -> Vec<usize> {
     let mut scored: Vec<(usize, bool, u64, u32)> = Vec::new();
     for (idx, client) in clients.iter().enumerate() {
@@ -29,17 +44,7 @@ async fn ordered_fri_client_indices(clients: &[Box<dyn ProofClient + Send + Sync
             continue;
         };
 
-        let best_unassigned = statuses
-            .iter()
-            .filter(|s| s.assigned_seconds_ago.is_none())
-            .max_by_key(|s| s.added_seconds_ago)
-            .map(|s| (true, s.added_seconds_ago, s.batch_number));
-        let best_any = statuses
-            .iter()
-            .max_by_key(|s| s.added_seconds_ago)
-            .map(|s| (false, s.added_seconds_ago, s.batch_number));
-
-        let Some(best) = best_unassigned.or(best_any) else {
+        let Some(best) = head_queue_job(&statuses) else {
             continue;
         };
         scored.push((idx, best.0, best.1, best.2));
@@ -254,6 +259,114 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             );
             tokio::time::sleep(retry_interval).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use url::Url;
+    use zkos_wrapper::SnarkWrapperProof;
+    use zksync_sequencer_proof_client::{L2BatchNumber, QueueJobStatus, SnarkProofInputs};
+
+    use super::*;
+
+    struct MockProofClient {
+        url: Url,
+        statuses: Vec<QueueJobStatus>,
+    }
+
+    impl MockProofClient {
+        fn statuses(url: &str, statuses: Vec<QueueJobStatus>) -> Self {
+            Self {
+                url: Url::parse(url).expect("valid url"),
+                statuses,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ProofClient for MockProofClient {
+        fn sequencer_url(&self) -> &Url {
+            &self.url
+        }
+
+        async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
+            Ok(None)
+        }
+
+        async fn submit_fri_proof(
+            &self,
+            _batch_number: u32,
+            _vk_hash: String,
+            _proof: String,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn status(&self, _stage: JobQueueStage) -> anyhow::Result<Vec<QueueJobStatus>> {
+            Ok(self.statuses.clone())
+        }
+
+        async fn fri_status(&self) -> anyhow::Result<Vec<QueueJobStatus>> {
+            self.status(JobQueueStage::Fri).await
+        }
+
+        async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
+            Ok(None)
+        }
+
+        async fn submit_snark_proof(
+            &self,
+            _from_batch_number: L2BatchNumber,
+            _to_batch_number: L2BatchNumber,
+            _vk_hash: String,
+            _proof: SnarkWrapperProof,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn ordered_fri_clients_score_by_head_batch_age() {
+        let clients: Vec<Box<dyn ProofClient + Send + Sync>> = vec![
+            Box::new(MockProofClient::statuses(
+                "http://old-tail.local",
+                vec![
+                    QueueJobStatus {
+                        batch_number: 1,
+                        vk_hash: "vk-head".to_owned(),
+                        added_seconds_ago: 10,
+                        assigned_seconds_ago: None,
+                        assigned_to_prover_id: None,
+                        current_attempt: 0,
+                    },
+                    QueueJobStatus {
+                        batch_number: 100,
+                        vk_hash: "vk-tail".to_owned(),
+                        added_seconds_ago: 10_000,
+                        assigned_seconds_ago: None,
+                        assigned_to_prover_id: None,
+                        current_attempt: 0,
+                    },
+                ],
+            )),
+            Box::new(MockProofClient::statuses(
+                "http://older-head.local",
+                vec![QueueJobStatus {
+                    batch_number: 2,
+                    vk_hash: "vk-other".to_owned(),
+                    added_seconds_ago: 20,
+                    assigned_seconds_ago: None,
+                    assigned_to_prover_id: None,
+                    current_attempt: 0,
+                }],
+            )),
+        ];
+
+        let ordered = ordered_fri_client_indices(&clients).await;
+
+        assert_eq!(ordered, vec![1, 0]);
     }
 }
 

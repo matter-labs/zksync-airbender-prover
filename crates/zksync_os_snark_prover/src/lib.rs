@@ -20,7 +20,7 @@ use zksync_airbender_execution_utils::{
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
 use zksync_sequencer_proof_client::JobQueueStage;
-use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
+use zksync_sequencer_proof_client::{ProofClient, QueueJobStatus, SnarkProofInputs};
 
 use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
 
@@ -55,6 +55,14 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send + 'static>) -> 
     }
 }
 // SYSCOIN
+fn head_queue_job(statuses: &[QueueJobStatus]) -> Option<(u64, u32)> {
+    statuses
+        .iter()
+        .filter(|s| s.assigned_seconds_ago.is_none())
+        .min_by_key(|s| s.batch_number)
+        .map(|s| (s.added_seconds_ago, s.batch_number))
+}
+
 async fn order_clients_by_oldest_unassigned(
     clients: &[Box<dyn ProofClient + Send + Sync>],
     stage: JobQueueStage,
@@ -65,13 +73,7 @@ async fn order_clients_by_oldest_unassigned(
             .status(stage)
             .await
             .ok()
-            .and_then(|statuses| {
-                statuses
-                    .iter()
-                    .filter(|s| s.assigned_seconds_ago.is_none())
-                    .max_by_key(|s| s.added_seconds_ago)
-                    .map(|s| (s.added_seconds_ago, s.batch_number))
-            })
+            .and_then(|statuses| head_queue_job(&statuses))
             .unwrap_or((0, u32::MAX));
         scored.push((idx, best.0, best.1));
     }
@@ -546,4 +548,113 @@ pub async fn run_inner(
 pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
     let src = std::fs::File::open(filename).unwrap();
     serde_json::from_reader(src).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use url::Url;
+    use zksync_sequencer_proof_client::{
+        FriJobInputs, L2BatchNumber, QueueJobStatus, SnarkProofInputs,
+    };
+
+    use super::*;
+
+    struct MockProofClient {
+        url: Url,
+        statuses: Vec<QueueJobStatus>,
+    }
+
+    impl MockProofClient {
+        fn statuses(url: &str, statuses: Vec<QueueJobStatus>) -> Self {
+            Self {
+                url: Url::parse(url).expect("valid url"),
+                statuses,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ProofClient for MockProofClient {
+        fn sequencer_url(&self) -> &Url {
+            &self.url
+        }
+
+        async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
+            Ok(None)
+        }
+
+        async fn submit_fri_proof(
+            &self,
+            _batch_number: u32,
+            _vk_hash: String,
+            _proof: String,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn status(&self, _stage: JobQueueStage) -> anyhow::Result<Vec<QueueJobStatus>> {
+            Ok(self.statuses.clone())
+        }
+
+        async fn fri_status(&self) -> anyhow::Result<Vec<QueueJobStatus>> {
+            self.status(JobQueueStage::Fri).await
+        }
+
+        async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
+            Ok(None)
+        }
+
+        async fn submit_snark_proof(
+            &self,
+            _from_batch_number: L2BatchNumber,
+            _to_batch_number: L2BatchNumber,
+            _vk_hash: String,
+            _proof: SnarkWrapperProof,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn snark_clients_score_by_head_batch_age_not_oldest_tail() {
+        let clients: Vec<Box<dyn ProofClient + Send + Sync>> = vec![
+            Box::new(MockProofClient::statuses(
+                "http://old-tail.local",
+                vec![
+                    QueueJobStatus {
+                        batch_number: 1,
+                        vk_hash: "vk-head".to_owned(),
+                        added_seconds_ago: 10,
+                        assigned_seconds_ago: None,
+                        assigned_to_prover_id: None,
+                        current_attempt: 0,
+                    },
+                    QueueJobStatus {
+                        batch_number: 100,
+                        vk_hash: "vk-tail".to_owned(),
+                        added_seconds_ago: 10_000,
+                        assigned_seconds_ago: None,
+                        assigned_to_prover_id: None,
+                        current_attempt: 0,
+                    },
+                ],
+            )),
+            Box::new(MockProofClient::statuses(
+                "http://older-head.local",
+                vec![QueueJobStatus {
+                    batch_number: 2,
+                    vk_hash: "vk-other".to_owned(),
+                    added_seconds_ago: 20,
+                    assigned_seconds_ago: None,
+                    assigned_to_prover_id: None,
+                    current_attempt: 0,
+                }],
+            )),
+        ];
+
+        let ordered = order_clients_by_oldest_unassigned(&clients, JobQueueStage::Snark).await;
+
+        assert_eq!(ordered, vec![1, 0]);
+    }
 }
