@@ -87,12 +87,12 @@ const V6: ProtocolVersion = ProtocolVersion {
 /// Corresponds to server's execution_version 7
 const V7: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0xb4cdc2235d292f3ae22ee3385d82217770f4b0c4908d00ccba5ef5a8c4d69e09",
+        "0x2a04d7134e8503a441c2e8cb92979405c80cf38349f895639821046d455e5a24",
     ),
     airbender_version: AirbenderVersion("v0.5.2"),
-    zksync_os_version: ZkSyncOSVersion("dev-20260421"),
+    zksync_os_version: ZkSyncOSVersion("v0.3.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.4"),
-    bin_md5sum: BinMd5Sum("d64ee223c005699dade4ab0eec7c3c49"),
+    bin_md5sum: BinMd5Sum("68095a039d6058e1f024741b76f29e24"),
 };
 
 /// Represents the set of supported protocol versions by this prover implementation.
