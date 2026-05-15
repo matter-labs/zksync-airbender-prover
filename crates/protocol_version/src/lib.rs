@@ -86,7 +86,6 @@ const V6: ProtocolVersion = ProtocolVersion {
 };
 
 /// Corresponds to server's execution_version 7
-#[allow(dead_code)]
 const V7: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
         "0x23156cf220288cd1e436dccfc09aa4883ea8288da61aa69e2c7251b0c0c44ccd",
