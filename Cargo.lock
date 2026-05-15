@@ -430,7 +430,7 @@ dependencies = [
  "lazy_static",
  "num-modular",
  "num_cpus",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rayon",
  "serde",
  "sha2 0.10.9",
@@ -546,7 +546,7 @@ source = "git+https://github.com/matter-labs/zkos-wrapper.git?tag=v0.5.4#574764c
 dependencies = [
  "boojum",
  "field",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -1258,7 +1258,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "835c052cb0c08c1acf6ffd71c022172e18723949c8282f2b9f27efbc51e64534"
 dependencies = [
  "byteorder",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rustc-hex",
  "static_assertions",
 ]
@@ -2928,9 +2928,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -3616,7 +3616,7 @@ dependencies = [
  "era_cudart_sys 0.155.2",
  "hex",
  "itertools 0.13.0",
- "rand 0.8.5",
+ "rand 0.8.6",
  "serde",
  "smallvec",
 ]
@@ -4933,7 +4933,7 @@ dependencies = [
  "itertools 0.10.5",
  "lazy_static",
  "rand 0.4.6",
- "rand 0.8.5",
+ "rand 0.8.6",
  "seq-macro",
  "serde",
  "serde_json",
