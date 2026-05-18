@@ -92,7 +92,7 @@ const V7: ProtocolVersion = ProtocolVersion {
     ),
     airbender_version: AirbenderVersion("v0.5.2"),
     zksync_os_version: ZkSyncOSVersion("v0.3.0"),
-    zkos_wrapper: ZkOsWrapperVersion("v0.5.4"),
+    zkos_wrapper: ZkOsWrapperVersion("v0.5.5"),
     bin_md5sum: BinMd5Sum("99d1618fdf63d80c4a6ed41cf21ed4d6"),
 };
 
