@@ -74,6 +74,7 @@ const V5: ProtocolVersion = ProtocolVersion {
 };
 
 /// Corresponds to server's execution_version 6 (or v1.3.1)
+#[allow(dead_code)]
 const V6: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
         "0x124ebcd537a1e1c152774dd18f67660e35625bba0b669bf3b4836d636b105337",
@@ -91,7 +92,7 @@ const V7: ProtocolVersion = ProtocolVersion {
     ),
     airbender_version: AirbenderVersion("v0.5.2"),
     zksync_os_version: ZkSyncOSVersion("v0.3.0"),
-    zkos_wrapper: ZkOsWrapperVersion("v0.5.4"),
+    zkos_wrapper: ZkOsWrapperVersion("v0.5.5"),
     bin_md5sum: BinMd5Sum("25d1642709208d5808f23bb8a2136473"),
 };
 
