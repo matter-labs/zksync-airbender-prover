@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.8.0...v0.8.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* multiblock_batch.bin for v31 ([#133](https://github.com/matter-labs/zksync-airbender-prover/issues/133)) ([9c486aa](https://github.com/matter-labs/zksync-airbender-prover/commit/9c486aa66d41e1f72311facdf5f30bf941bdfb6e))
+
 ## [0.8.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.7.1...v0.8.0) (2026-05-18)
 
 
