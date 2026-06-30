@@ -8,9 +8,6 @@ on:
         required: true
         type: string
 
-env:
-  VERSION: "0.8.1"
-
 jobs:
   create-parent-project:
     name: Create or verify Dependency Track collection project
