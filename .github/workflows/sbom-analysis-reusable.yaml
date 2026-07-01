@@ -1,5 +1,17 @@
-# Reusable workflow: generates SBOMs for both source code and container images,
-# then uploads them to Dependency Track for vulnerability tracking.
+# Reusable workflow: generates SBOMs (Software Bill of Materials) for both source
+# code and container images, then uploads them to Dependency Track for vulnerability
+# tracking.
+#
+# An SBOM is a machine-readable inventory of every library and component that goes
+# into a software artifact.
+# It records each dependency's name, version, license, origin, and known
+# vulnerabilities at the time of the build, in a standardised format (CycloneDX
+# here). Having it continuously updated lets us:
+#   - detect newly disclosed CVEs in our dependencies without re-scanning manually;
+#   - satisfy security audits and compliance frameworks (SOC 2, ISO 27001, etc.)
+#     that require evidence of third-party component oversight;
+#   - respond quickly to supply-chain incidents (e.g. log4shell-style events) by
+#     knowing exactly which builds are affected.
 #
 # Structure:
 #   create-parent-project  — ensures a collection project exists in DT that will
