@@ -1,3 +1,17 @@
+# Reusable workflow: generates SBOMs for both source code and container images,
+# then uploads them to Dependency Track for vulnerability tracking.
+#
+# Structure:
+#   create-parent-project  — ensures a collection project exists in DT that will
+#                            aggregate vulnerabilities from all child projects below.
+#   sbom-code              — scans the source tree with Syft, produces a CycloneDX
+#                            SBOM, and uploads it as a child project "<repo>-code".
+#   sbom-image             — (matrix) pulls each container image from GHCR, scans it
+#                            with Syft, and uploads it as "<repo>-<app>-image".
+#
+# All three child projects are parented to the collection project so the DT dashboard
+# shows a single rolled-up view per version.
+
 name: SBOM generation and upload to Dependency Track
 
 on:
@@ -31,6 +45,7 @@ jobs:
 
   sbom-code:
     name: Generate and upload SBOM of the source code for analysis
+    # Must run after the parent collection project is guaranteed to exist.
     needs: create-parent-project
     runs-on: ubuntu-latest
     permissions:
@@ -63,11 +78,12 @@ jobs:
 
   sbom-image:
     name: Generate and upload SBOM of the container images for analysis
+    # Runs in parallel with sbom-code; one job per image in the matrix.
     needs: create-parent-project
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: read
+      packages: read  # needed to pull images from GHCR
     strategy:
       matrix:
         app:

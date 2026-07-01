@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Creates (or locates if already existing) a "collection" project in Dependency-Track.
+# A collection project aggregates the SBOMs of its children using AGGREGATE_LATEST_VERSION_CHILDREN,
+# so the parent project always reflects the combined vulnerability posture of the latest child versions.
+# On success the project UUID is printed to the log; downstream steps can scrape it from there.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -30,6 +34,8 @@ main() {
 
   local http_response http_status response_body uuid
 
+  # PUT is idempotent in DT's API: 201 = created, 409 = already exists.
+  # The status code is appended after a newline so it can be split off from the body.
   http_response=$(curl -s -w "\n%{http_code}" \
     -X PUT "${DT_BASE_URL}/api/v1/project" \
     -H "X-Api-Key: ${DT_API_KEY}" \
@@ -51,6 +57,7 @@ main() {
     log "Project created."
     uuid=$(printf '%s' "${response_body}" | jq -r '.uuid')
   elif [[ "${http_status}" == "409" ]]; then
+    # Project already exists (e.g. re-running CI on the same version). Look it up by name+version.
     log "Project already exists, fetching existing project..."
     local existing
     existing=$(curl -sf --get \
