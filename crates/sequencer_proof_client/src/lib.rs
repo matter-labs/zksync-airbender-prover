@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
-use zksync_airbender_execution_utils::ProgramProof;
+use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 
 mod metrics;
 
@@ -102,7 +102,7 @@ pub struct SnarkProofInputs {
     pub from_batch_number: L2BatchNumber,
     pub to_batch_number: L2BatchNumber,
     pub vk_hash: String,
-    pub fri_proofs: Vec<ProgramProof>,
+    pub fri_proofs: Vec<UnrolledProgramProof>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

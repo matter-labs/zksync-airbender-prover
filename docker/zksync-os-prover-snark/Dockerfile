@@ -62,6 +62,7 @@ COPY --from=builder /setup_compact.key /setup_compact.key
 RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY multiblock_batch.bin /multiblock_batch.bin
+COPY multiblock_batch.text /multiblock_batch.text
 COPY --from=builder /usr/src/zksync/target/release/zksync_os_snark_prover /usr/bin/
 
 ENTRYPOINT ["/entrypoint.sh"]

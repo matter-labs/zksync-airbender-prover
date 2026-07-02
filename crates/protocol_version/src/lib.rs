@@ -86,6 +86,7 @@ const V6: ProtocolVersion = ProtocolVersion {
 };
 
 /// Corresponds to server's execution_version 7
+#[allow(dead_code)]
 const V7: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
         "0x23156cf220288cd1e436dccfc09aa4883ea8288da61aa69e2c7251b0c0c44ccd",
@@ -96,6 +97,20 @@ const V7: ProtocolVersion = ProtocolVersion {
     bin_md5sum: BinMd5Sum("99d1618fdf63d80c4a6ed41cf21ed4d6"),
 };
 
+/// Corresponds to server's execution_version 8 (protocol v32.1, zksync-os 0.4.0 native batch prover)
+/// TODO: the vk_hash is the same placeholder sentinel as zksync-os-server's `V8_VK_HASH`;
+/// replace both with the real hash once the V8 VK is generated on a GPU box
+/// (`zksync_os_snark_prover generate-keys` against this repo's `multiblock_batch.bin`).
+const V8: ProtocolVersion = ProtocolVersion {
+    vk_hash: VerificationKeyHash(
+        "0x0000000000000000000000000000000000000000000000000000000000000008",
+    ),
+    airbender_version: AirbenderVersion("73d69b5"),
+    zksync_os_version: ZkSyncOSVersion("v0.4.0"),
+    zkos_wrapper: ZkOsWrapperVersion("a9eec62"),
+    bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
+};
+
 /// Represents the set of supported protocol versions by this prover implementation.
 #[derive(Debug)]
 pub struct SupportedProtocolVersions {
@@ -104,7 +119,7 @@ pub struct SupportedProtocolVersions {
 
 impl Default for SupportedProtocolVersions {
     fn default() -> Self {
-        Self { versions: vec![V7] }
+        Self { versions: vec![V8] }
     }
 }
 

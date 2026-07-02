@@ -21,10 +21,6 @@ zksync_sequencer_proof_client.workspace = true
 zksync_os_fri_prover = { path = "../zksync_os_fri_prover" }
 zksync_os_snark_prover = { path = "../zksync_os_snark_prover" }
 
-zksync_airbender_cli.workspace = true
-zksync_airbender_execution_utils.workspace = true
-zkos_wrapper.workspace = true
-
 tokio.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true
@@ -39,9 +35,4 @@ clap.workspace = true
 url.workspace = true
 
 [features]
-gpu = [
-    "zksync_airbender_cli/gpu",
-    "zkos_wrapper/gpu",
-    "zksync_os_fri_prover/gpu",
-    "zksync_os_snark_prover/gpu",
-]
+gpu = ["zksync_os_fri_prover/gpu", "zksync_os_snark_prover/gpu"]

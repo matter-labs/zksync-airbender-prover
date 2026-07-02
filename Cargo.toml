@@ -25,21 +25,18 @@ zksync_sequencer_proof_client = { path = "crates/sequencer_proof_client" }
 protocol_version = { path = "crates/protocol_version" }
 
 # zksync-airbender dependencies
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.5.2" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender.git", tag = "v0.5.2" }
+# NOTE: the URL form and rev string must match the ones used by zkos-wrapper so that
+# cargo unifies the git source instead of building two copies of the airbender crates.
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", rev = "73d69b5" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", rev = "73d69b5" }
 
 # zkos-wrapper dependencies
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", tag = "v0.5.5" }
-
-# zksync-crypto-gpu dependencies
-proof-compression = "=0.155.2"
-
-# zksync-protocol dependencies
-circuit_definitions = "=0.153.3"
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "a9eec621e5989a2e80d81609405625813a15c376" }
 
 # zksync-crypto dependencies
-bellman = { package = "zksync_bellman", version = "=0.32.5" }
-crypto_codegen = { package = "zksync_solidity_vk_codegen", version = "=0.32.5" }
+# NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps
+# (not yet released to crates.io in a version compatible with zkos-wrapper dev).
+crypto_codegen = { package = "zksync_solidity_vk_codegen", git = "https://github.com/matter-labs/zksync-crypto.git", branch = "oh_for_wrapper" }
 
 # external dependencies
 anyhow = "1.0"
@@ -60,6 +57,14 @@ url = "2.5"
 
 # Things below are to guarantee that we can compile in reasonable time.
 # Once we do some optimizations to the zkos-wrapper and compression verifier, we'll be able to remove some of them.
+
+# Debug-info generation for the airbender circuit crates is exponential in LLVM and
+# overflows rustc's stack (zksync-airbender disables it the same way in its own profiles).
+[profile.dev.package."keccak_special5"]
+debug = false
+
+[profile.dev.package."setups"]
+debug = false
 
 [profile.release.package."blake2_with_compression_verifier"]
 opt-level = 1

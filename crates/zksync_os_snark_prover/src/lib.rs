@@ -1,24 +1,11 @@
-#[cfg(feature = "gpu")]
-use proof_compression::serialization::PlonkSnarkVerifierCircuitDeviceSetupWrapper;
 use protocol_version::SupportedProtocolVersions;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-#[cfg(feature = "gpu")]
 use zkos_wrapper::{
-    generate_risk_wrapper_vk,
-    gpu::{compression::get_compression_setup, snark::gpu_create_snark_setup_data},
-    BoojumWorker, CompressionVK, SnarkWrapperVK,
+    CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperProof, SnarkWrapperVK,
 };
-use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
-use zksync_airbender_cli::prover_utils::{
-    create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
-};
-use zksync_airbender_execution_utils::{
-    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
-    get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
-    UNIVERSAL_CIRCUIT_VERIFIER,
-};
+use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
 use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
@@ -30,130 +17,96 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
+/// Build the SNARK wrapper session used for proving and VK generation.
+///
+/// The wrapper is constructed without an explicit binary: the verification keys bind the
+/// wrapper chain over zkos-wrapper's embedded unified recursion verifier binary, and the
+/// app binary is bound through the recursion chain carried inside the FRI proof itself.
+pub fn create_snark_wrapper(trusted_setup_file: String) -> anyhow::Result<SnarkWrapper> {
+    #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
+    let mut wrapper = SnarkWrapper::new(SnarkWrapperConfig {
+        trusted_setup: Some(trusted_setup_file.into()),
+        ..Default::default()
+    })?;
+
+    // Mirror the old eager GPU precomputation: derive the full VK/setup chain up front so
+    // that setup problems surface at startup rather than on the first picked job (and the
+    // startup-time metric keeps its meaning). Skipped on CPU, as before.
+    #[cfg(feature = "gpu")]
+    {
+        tracing::info!("Computing SNARK precomputations");
+        wrapper.snark_vk()?;
+        tracing::info!("Finished computing SNARK precomputations");
+    }
+
+    Ok(wrapper)
+}
+
 pub fn generate_verification_key(
-    binary_path: String,
+    // Deprecated: the VK no longer depends on the app binary (see `create_snark_wrapper`).
+    _binary_path: String,
     output_dir: String,
     trusted_setup_file: String,
     vk_verification_key_file: Option<String>,
 ) {
-    match zkos_wrapper::generate_vk(
-        Some(binary_path),
-        output_dir,
-        Some(trusted_setup_file),
-        true,
-        zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
-    ) {
-        Ok(key) => {
-            if let Some(vk_file) = vk_verification_key_file {
-                std::fs::write(vk_file, format!("{key:?}"))
-                    .expect("Failed to write verification key to file");
-            } else {
-                tracing::info!("Verification key generated successfully: {:#?}", key);
-            }
+    let result = (|| -> anyhow::Result<()> {
+        zkos_wrapper::interface::cmd_generate_vk(
+            output_dir.clone().into(),
+            None,
+            None,
+            Some(trusted_setup_file.into()),
+            None,
+        )?;
+
+        if let Some(vk_file) = vk_verification_key_file {
+            let snark_vk_path = Path::new(&output_dir).join("snark_vk.json");
+            let vk: SnarkWrapperVK = zkos_wrapper::deserialize_from_file(
+                snark_vk_path
+                    .to_str()
+                    .ok_or_else(|| anyhow::anyhow!("non-UTF8 output dir {output_dir:?}"))?,
+            )?;
+            let vk_hash = zkos_wrapper::calculate_verification_key_hash(vk);
+            std::fs::write(vk_file, format!("{vk_hash:?}"))?;
         }
-        Err(e) => {
-            tracing::error!("Error generating keys: {e}");
-        }
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => tracing::info!("Verification keys generated successfully"),
+        Err(e) => tracing::error!("Error generating keys: {e:?}"),
     }
 }
 
-pub fn merge_fris(
-    snark_proof_input: SnarkProofInputs,
-    verifier_binary: &Vec<u32>,
-    gpu_state: &mut Option<&mut GpuSharedState>,
-) -> ProgramProof {
+pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<UnrolledProgramProof> {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
 
-    if snark_proof_input.fri_proofs.len() == 1 {
-        tracing::info!("No proof merging needed, only one proof provided");
-        return snark_proof_input.fri_proofs[0].clone();
-    }
-    tracing::info!("Starting proof merging");
+    let SnarkProofInputs {
+        from_batch_number,
+        to_batch_number,
+        mut fri_proofs,
+        ..
+    } = snark_proof_input;
 
-    let mut proof = snark_proof_input.fri_proofs[0].clone();
-    for i in 1..snark_proof_input.fri_proofs.len() {
-        let up_to_batch = snark_proof_input.from_batch_number.0 + i as u32 - 1;
-        let curr_batch = snark_proof_input.from_batch_number.0 + i as u32;
-        tracing::info!(
-            "Linking proofs up to {} with proof for batch {}",
-            up_to_batch,
-            curr_batch
-        );
-        let second_proof = snark_proof_input.fri_proofs[i].clone();
-
-        let (first_metadata, first_proof_list) = proof.to_metadata_and_proof_list();
-        let (second_metadata, second_proof_list) = second_proof.to_metadata_and_proof_list();
-
-        let first_oracle =
-            generate_oracle_data_from_metadata_and_proof_list(&first_metadata, &first_proof_list);
-        let second_oracle =
-            generate_oracle_data_from_metadata_and_proof_list(&second_metadata, &second_proof_list);
-
-        let mut merged_input = vec![VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32];
-        merged_input.extend(first_oracle);
-        merged_input.extend(second_oracle);
-
-        let (mut current_proof_list, mut proof_metadata) = create_proofs_internal(
-            verifier_binary,
-            merged_input,
-            &zksync_airbender_execution_utils::Machine::Reduced,
-            100, // Guessing - FIXME!!
-            Some(first_metadata.create_prev_metadata()),
-            gpu_state,
-            &mut Some(0f64),
-        );
-        // Let's do recursion.
-        let mut recursion_level = 0;
-
-        while current_proof_list.reduced_proofs.len() > 2 {
-            tracing::info!("Recursion step {} after fri merging", recursion_level);
-            recursion_level += 1;
-            let non_determinism_data =
-                generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
-
-            (current_proof_list, proof_metadata) = create_proofs_internal(
-                verifier_binary,
-                non_determinism_data,
-                &Machine::Reduced,
-                proof_metadata.total_proofs(),
-                Some(proof_metadata.create_prev_metadata()),
-                gpu_state,
-                &mut Some(0f64),
-            );
+    match fri_proofs.len() {
+        1 => {
+            tracing::info!("No proof merging needed, only one proof provided");
+            Ok(fri_proofs.pop().unwrap())
         }
-
-        proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
-        tracing::info!("Finished linking proofs up to batch {}", up_to_batch);
+        // TODO: airbender's unrolled prover stack has no cross-batch proof merging yet
+        // (the old universal-verifier `CombinedRecursionLayers` flow was removed).
+        // Until it does, the sequencer must schedule exactly one batch per SNARK.
+        n => anyhow::bail!(
+            "SNARK job for batches {from_batch_number} to {to_batch_number} contains {n} FRI \
+             proofs; merging multiple FRI proofs is not supported by the unrolled prover stack \
+             yet — configure the sequencer to schedule one batch per SNARK"
+        ),
     }
-
-    // TODO: We can do a recursion step here as well, IIUC
-    tracing::info!(
-        "Finishing linking all proofs from {} to {}",
-        snark_proof_input.from_batch_number,
-        snark_proof_input.to_batch_number
-    );
-    proof
-}
-
-#[cfg(feature = "gpu")]
-pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
-    let worker = BoojumWorker::new();
-
-    let risc_wrapper_vk = generate_risk_wrapper_vk(
-        Some(binary_path),
-        true,
-        RecursionStrategy::UseReducedLog23Machine,
-        &worker,
-    )
-    .unwrap();
-
-    let (_, compression_vk, _) = get_compression_setup(&worker, risc_wrapper_vk);
-    compression_vk
 }
 
 pub async fn run_linking_fri_snark(
+    // Deprecated: the SNARK wrapper no longer depends on the app binary (see `create_snark_wrapper`).
     _binary_path: String,
     clients: Vec<Box<dyn ProofClient + Send + Sync>>,
     output_dir: String,
@@ -174,16 +127,7 @@ pub async fn run_linking_fri_snark(
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
-
-    #[cfg(feature = "gpu")]
-    let precomputations = {
-        tracing::info!("Computing SNARK precomputations");
-        let compression_vk = compute_compression_vk(_binary_path);
-        let precomputations = gpu_create_snark_setup_data(&compression_vk, &trusted_setup_file);
-        tracing::info!("Finished computing SNARK precomputations");
-        precomputations
-    };
+    let mut snark_wrapper = create_snark_wrapper(trusted_setup_file)?;
 
     SNARK_PROVER_METRICS
         .time_taken_startup
@@ -197,11 +141,8 @@ pub async fn run_linking_fri_snark(
 
         let proof_generated = run_inner(
             client.as_ref(),
-            &verifier_binary,
+            &mut snark_wrapper,
             output_dir.clone(),
-            trusted_setup_file.clone(),
-            #[cfg(feature = "gpu")]
-            &precomputations,
             disable_zk,
             &supported_versions,
         )
@@ -231,13 +172,8 @@ pub async fn run_linking_fri_snark(
 
 pub async fn run_inner(
     client: &dyn ProofClient,
-    verifier_binary: &Vec<u32>,
+    snark_wrapper: &mut SnarkWrapper,
     output_dir: String,
-    trusted_setup_file: String,
-    #[cfg(feature = "gpu")] precomputations: &(
-        PlonkSnarkVerifierCircuitDeviceSetupWrapper,
-        SnarkWrapperVK,
-    ),
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
@@ -301,76 +237,43 @@ pub async fn run_inner(
         start_batch,
         end_batch,
     );
-    tracing::info!("Initializing GPU state");
-    #[cfg(feature = "gpu")]
-    let mut gpu_state_store = GpuSharedState::new(
-        verifier_binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-    );
-    #[cfg(feature = "gpu")]
-    let mut gpu_state = Some(&mut gpu_state_store);
-    #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = None;
-    tracing::info!("Finished initializing GPU state");
 
     let mut stats = SnarkProofTimeStats::new();
 
-    let proof = stats.measure_step(SnarkStage::MergeFri, || {
-        merge_fris(snark_proof_input, verifier_binary, &mut gpu_state)
-    });
+    // A multi-proof job would be re-picked forever, so treat it as a fatal
+    // configuration error rather than skipping it.
+    let proof = stats.measure_step(SnarkStage::MergeFri, || merge_fris(snark_proof_input))?;
 
-    // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
-    #[cfg(feature = "gpu")]
-    drop(gpu_state_store);
+    tracing::info!("Wrapping and compressing FRI proof");
 
-    tracing::info!("Creating final proof before SNARKification");
-
-    let final_proof = stats.measure_step(SnarkStage::FinalProof, || {
-        create_final_proofs_from_program_proof(
-            proof,
-            RecursionStrategy::UseReducedLog23Machine,
-            #[cfg(feature = "gpu")]
-            true,
-            #[cfg(not(feature = "gpu"))]
-            false,
-        )
-    });
-
-    tracing::info!("Finished creating final proof");
-    let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
-
-    serialize_to_file(&final_proof, &one_fri_path);
+    // Proving failures are fatal (as they were in the old prover, which panicked): silently
+    // skipping would re-pick the same job forever, and a failed attempt can leave the
+    // wrapper's cached GPU state unusable for the FRI phase of the combined service.
+    let stage_start = Instant::now();
+    let compression_proof: CompressionProof = (|| {
+        let risc_wrapper_proof = snark_wrapper.prove_risc_wrapper(proof)?;
+        snark_wrapper.prove_compression(risc_wrapper_proof)
+    })()
+    .map_err(|e| anyhow::anyhow!("failed to wrap/compress FRI proof: {e:?}"))?;
+    stats.observe_step(SnarkStage::FinalProof, stage_start.elapsed());
 
     tracing::info!("SNARKifying proof");
-    let start = Instant::now();
-    match prove(
-        one_fri_path.into_os_string().into_string().unwrap(),
-        output_dir.clone(),
-        Some(trusted_setup_file.clone()),
-        false,
-        #[cfg(feature = "gpu")]
-        Some(precomputations),
-        // note that the API is use_zk, so we invert the disable_zk flag
-        !disable_zk,
-    ) {
-        Ok(()) => {
-            stats.observe_step(SnarkStage::Snark, start.elapsed());
+    // note that the API is use_zk, so we invert the disable_zk flag
+    let stage_start = Instant::now();
+    let snark_proof: SnarkWrapperProof = snark_wrapper
+        .prove_snark(compression_proof, !disable_zk)
+        .map_err(|e| anyhow::anyhow!("failed to SNARKify proof: {e:?}"))?;
+    stats.observe_step(SnarkStage::Snark, stage_start.elapsed());
+    stats.observe_full();
+    tracing::info!("Finished generating proof, time stats: {}", stats);
 
-            stats.observe_full();
-
-            tracing::info!("Finished generating proof, time stats: {}", stats);
-        }
-        Err(e) => {
-            tracing::error!("failed to SNARKify proof: {e:?}, time stats: {}", stats);
+    // Persist the proof next to the other artifacts, mirroring the old flow (best effort).
+    let snark_proof_path = Path::new(&output_dir).join("snark_proof.json");
+    if let Some(path) = snark_proof_path.to_str() {
+        if let Err(e) = zkos_wrapper::serialize_to_file(&snark_proof, path) {
+            tracing::warn!("failed to persist SNARK proof to {path}: {e:?}");
         }
     }
-
-    let snark_proof: SnarkWrapperProof = deserialize_from_file(
-        Path::new(&output_dir)
-            .join("snark_proof.json")
-            .to_str()
-            .unwrap(),
-    );
 
     match client
         .submit_snark_proof(start_batch, end_batch, vk_hash.clone(), snark_proof)
@@ -419,9 +322,4 @@ pub async fn run_inner(
             Ok(false)
         }
     }
-}
-
-pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    serde_json::from_reader(src).unwrap()
 }
