@@ -98,12 +98,9 @@ const V7: ProtocolVersion = ProtocolVersion {
 };
 
 /// Corresponds to server's execution_version 8 (protocol v32.1, zksync-os 0.4.0 native batch prover)
-/// TODO: the vk_hash is the same placeholder sentinel as zksync-os-server's `V8_VK_HASH`;
-/// replace both with the real hash once the V8 VK is generated on a GPU box
-/// (`zksync_os_snark_prover generate-keys` against this repo's `multiblock_batch.bin`).
 const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0x0000000000000000000000000000000000000000000000000000000000000008",
+        "0x87293b7f26e6c40111d512e13d8d06fe868b3ef764bc7d3a42058efc0f73bd9e",
     ),
     airbender_version: AirbenderVersion("73d69b5"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
