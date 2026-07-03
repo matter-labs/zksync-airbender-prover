@@ -33,5 +33,9 @@ vise.workspace = true
 vise-exporter.workspace = true
 url.workspace = true
 
+[dev-dependencies]
+bincode.workspace = true
+serde_json.workspace = true
+
 [features]
 gpu = ["zkos_wrapper/gpu"]
