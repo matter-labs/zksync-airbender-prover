@@ -90,12 +90,30 @@ fn main() {
                     trusted_setup_file,
                 },
             vk_verification_key_file,
-        } => generate_verification_key(
-            binary_path,
-            output_dir,
-            trusted_setup_file,
-            vk_verification_key_file,
-        ),
+        } => {
+            // Circuit synthesis needs a large stack; RUST_MIN_STACK only affects spawned
+            // threads, and the main thread's size is fixed by the OS (8 MB on macOS). Run
+            // key generation on a worker thread instead, like run-prover does via its
+            // tokio worker stacks.
+            let stack_size = std::env::var("RUST_MIN_STACK")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(0)
+                .max(256 * 1024 * 1024);
+            std::thread::Builder::new()
+                .stack_size(stack_size)
+                .spawn(move || {
+                    generate_verification_key(
+                        binary_path,
+                        output_dir,
+                        trusted_setup_file,
+                        vk_verification_key_file,
+                    )
+                })
+                .expect("failed to spawn key generation thread")
+                .join()
+                .expect("key generation thread panicked");
+        }
         Commands::RunProver {
             sequencer_urls,
             setup:
