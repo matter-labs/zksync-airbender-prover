@@ -11,9 +11,6 @@ use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
     #[arg(long)]
-    binary_path: String,
-
-    #[arg(long)]
     output_dir: String,
 
     #[arg(long)]
@@ -81,44 +78,48 @@ fn main() {
     init_tracing();
     let cli = Cli::parse();
 
+    // Circuit synthesis (key generation and the SNARK wrapper chain) exhausts the default
+    // stack, and the main thread's size is fixed by the OS. Give every thread the runtime
+    // spawns (workers and blocking threads alike) an explicit stack size: it only limits
+    // how far the stack may grow, nothing is allocated up front. RUST_MIN_STACK is
+    // honored as an override.
+    let stack_size = std::env::var("RUST_MIN_STACK")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(0)
+        .max(256 * 1024 * 1024);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(stack_size)
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
+
     match cli.command {
         Commands::GenerateKeys {
             setup:
                 SetupOptions {
-                    binary_path,
                     output_dir,
                     trusted_setup_file,
                 },
             vk_verification_key_file,
         } => {
-            // Circuit synthesis needs a large stack; RUST_MIN_STACK only affects spawned
-            // threads, and the main thread's size is fixed by the OS (8 MB on macOS). Run
-            // key generation on a worker thread instead, like run-prover does via its
-            // tokio worker stacks.
-            let stack_size = std::env::var("RUST_MIN_STACK")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(0)
-                .max(256 * 1024 * 1024);
-            std::thread::Builder::new()
-                .stack_size(stack_size)
-                .spawn(move || {
+            // Run synthesis on a runtime-managed thread rather than the OS-sized main one.
+            runtime.block_on(async move {
+                tokio::task::spawn_blocking(move || {
                     generate_verification_key(
-                        binary_path,
                         output_dir,
                         trusted_setup_file,
                         vk_verification_key_file,
                     )
                 })
-                .expect("failed to spawn key generation thread")
-                .join()
-                .expect("key generation thread panicked");
+                .await
+                .expect("key generation task panicked")
+            });
         }
         Commands::RunProver {
             sequencer_urls,
             setup:
                 SetupOptions {
-                    binary_path,
                     output_dir,
                     trusted_setup_file,
                 },
@@ -128,16 +129,6 @@ fn main() {
             disable_zk,
             prover_name,
         } => {
-            // TODO: edit this comment
-            // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
-            // note that size is not allocated, only limits the amount to which it can grow
-            let stack_size = 40 * 1024 * 1024;
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .thread_stack_size(stack_size)
-                .enable_all()
-                .build()
-                .expect("failed to build tokio context");
-
             let (stop_sender, stop_receiver) = watch::channel(false);
 
             runtime.block_on(async move {
@@ -163,7 +154,6 @@ fn main() {
 
                 tokio::select! {
                     result = run_linking_fri_snark(
-                        binary_path,
                         clients,
                         output_dir,
                         trusted_setup_file,

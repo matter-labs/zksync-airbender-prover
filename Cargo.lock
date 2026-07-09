@@ -5226,13 +5226,11 @@ name = "zksync_os_snark_prover"
 version = "0.8.1"
 dependencies = [
  "anyhow",
- "bincode 2.0.1",
  "clap",
  "execution_utils",
  "protocol_version",
  "reqwest",
  "serde",
- "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

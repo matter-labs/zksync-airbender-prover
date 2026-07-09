@@ -44,17 +44,9 @@ pub struct Args {
         default_value = "http://localhost:3124"
     )]
     pub sequencer_urls: Vec<SequencerEndpoint>,
-    /// Enable logging and use the logging-enabled binary
-    /// This is not used in the FRI prover, but is kept for backward compatibility.
-    #[arg(long)]
-    pub enabled_logging: bool,
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
-    /// Circuit limit - max number of MainVM circuits to instantiate to run the batch fully
-    /// This is not used with the unrolled prover, but is kept for backward compatibility.
-    #[arg(long, default_value = "10000")]
-    pub circuit_limit: usize,
     /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
     #[arg(long)]
     pub iterations: Option<usize>,

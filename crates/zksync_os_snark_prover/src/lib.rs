@@ -43,8 +43,6 @@ pub fn create_snark_wrapper(trusted_setup_file: String) -> anyhow::Result<SnarkW
 }
 
 pub fn generate_verification_key(
-    // Deprecated: the VK no longer depends on the app binary (see `create_snark_wrapper`).
-    _binary_path: String,
     output_dir: String,
     trusted_setup_file: String,
     vk_verification_key_file: Option<String>,
@@ -106,8 +104,6 @@ pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<Unrolle
 }
 
 pub async fn run_linking_fri_snark(
-    // Deprecated: the SNARK wrapper no longer depends on the app binary (see `create_snark_wrapper`).
-    _binary_path: String,
     clients: Vec<Box<dyn ProofClient + Send + Sync>>,
     output_dir: String,
     trusted_setup_file: String,
