@@ -40,7 +40,8 @@ zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs
 crypto_codegen = { package = "zksync_solidity_vk_codegen", git = "https://github.com/matter-labs/zksync-crypto.git", branch = "oh_for_wrapper" }
 
 # external dependencies
-anyhow = "1.0"
+anyhow = "1.0.103"
+memmap2 = "0.9.11"
 async-trait = "0.1"
 base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
