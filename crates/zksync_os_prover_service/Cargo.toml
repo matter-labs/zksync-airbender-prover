@@ -25,7 +25,7 @@ zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
 zkos_wrapper.workspace = true
 
-tokio.workspace = true
+tokio = { workspace = true, features = ["signal", "sync", "time"] }
 serde_json.workspace = true
 reqwest.workspace = true
 
@@ -37,6 +37,8 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 clap.workspace = true
 url.workspace = true
+vise.workspace = true
+vise-exporter.workspace = true
 
 [features]
 gpu = [

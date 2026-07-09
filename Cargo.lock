@@ -5120,6 +5120,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "vise",
+ "vise-exporter",
  "zkos-wrapper",
  "zksync_os_fri_prover",
  "zksync_os_snark_prover",
