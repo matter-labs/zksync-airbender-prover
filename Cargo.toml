@@ -36,6 +36,7 @@ zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps
 # (not yet released to crates.io in a version compatible with zkos-wrapper dev).
+# TODO: Once zksync-crypto is released to crates.io - switch to using the crates.io version instead of the git version.
 crypto_codegen = { package = "zksync_solidity_vk_codegen", git = "https://github.com/matter-labs/zksync-crypto.git", branch = "oh_for_wrapper" }
 
 # external dependencies
