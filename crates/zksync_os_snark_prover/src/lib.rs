@@ -246,9 +246,9 @@ pub async fn run_inner(
 
     tracing::info!("Wrapping and compressing FRI proof");
 
-    // Proving failures are fatal (as they were in the old prover, which panicked): silently
-    // skipping would re-pick the same job forever, and a failed attempt can leave the
-    // wrapper's cached GPU state unusable for the FRI phase of the combined service.
+    // Proving failures are fatal: silently skipping would re-pick the same job forever, and a
+    // failed attempt can leave the wrapper's cached GPU state unusable for the FRI phase of the
+    // zksync_os_prover_service service that runs FRI and SNARK on the same process.
     let stage_start = Instant::now();
     let compression_proof: CompressionProof = (|| {
         let risc_wrapper_proof = snark_wrapper.prove_risc_wrapper(proof)?;

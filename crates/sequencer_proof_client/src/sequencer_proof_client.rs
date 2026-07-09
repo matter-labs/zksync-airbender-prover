@@ -112,8 +112,6 @@ impl SequencerProofClient {
     /// # Errors
     /// * if serialization/deserialization fails (needed for conversion)
     pub fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String> {
-        // zkos-wrapper and crypto_codegen now share the same bellman, so the proof can be
-        // serialized directly without the serde round-trip through circuit_definitions types.
         let (_, serialized_proof) = crypto_codegen::serialize_proof(proof);
 
         let byte_serialized_proof = serialized_proof
