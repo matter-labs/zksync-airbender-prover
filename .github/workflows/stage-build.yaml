@@ -41,6 +41,8 @@ jobs:
           - zksync-airbender-prover
           - zksync-os-prover-fri
           - zksync-os-prover-snark
+    outputs:
+      sha_tag: ${{ steps.sha-tag.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -99,3 +101,21 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           cache-from: 'type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ matrix.component }}:buildcache'
           cache-to: ${{ steps.set-cache-to.outputs.cache-to }}
+
+      - name: Extract SHA tag
+        id: sha-tag
+        run: |
+          SHA_TAG=$(echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | grep -E '[0-9a-f]{7}-[0-9]+' | head -1 | cut -d':' -f2)
+          echo "tag=${SHA_TAG}" >> "${GITHUB_OUTPUT}"
+
+  sbom-generation:
+    name: SBOM
+    needs: [ 'build-images' ]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/sbom-analysis-reusable.yaml
+    secrets: inherit
+    with:
+      version: ${{ inputs.tag_name || (github.ref_type == 'tag' && github.ref_name) || needs.build-images.outputs.sha_tag }}
