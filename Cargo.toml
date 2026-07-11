@@ -27,11 +27,13 @@ protocol_version = { path = "crates/protocol_version" }
 # zksync-airbender dependencies
 # NOTE: the URL form and rev string must match the ones used by zkos-wrapper so that
 # cargo unifies the git source instead of building two copies of the airbender crates.
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", rev = "73d69b5" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", rev = "73d69b5" }
+# rev e0a5b6d3 = head of `dz-combined-recursion-layers` (multi-batch proof combining).
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", rev = "e0a5b6d3" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", rev = "e0a5b6d3" }
 
 # zkos-wrapper dependencies
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "a9eec621e5989a2e80d81609405625813a15c376" }
+# rev = head of `dz-airbender-combined-recursion-layers` (airbender bumped to e0a5b6d3).
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "a676dedaf88dce871cc7679b003ad2c59268dddc" }
 
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps
@@ -50,6 +52,7 @@ reqwest = { version = "0.12.19", features = ["json"] }
 secrecy = "0.10.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
+sha3 = "0.10"
 tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

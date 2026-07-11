@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
@@ -71,6 +72,10 @@ enum Commands {
         /// Name of the prover for identification in the sequencer
         #[arg(long, default_value = "unknown_prover")]
         prover_name: String,
+        /// Path to `app.bin`, used to verify and combine the job's FRI proofs when a
+        /// SNARK spans multiple batches. Defaults to the workspace's `multiblock_batch.bin`.
+        #[arg(long)]
+        app_bin_path: Option<PathBuf>,
     },
 }
 
@@ -128,6 +133,7 @@ fn main() {
             request_timeout_secs,
             disable_zk,
             prover_name,
+            app_bin_path,
         } => {
             let (stop_sender, stop_receiver) = watch::channel(false);
 
@@ -159,6 +165,7 @@ fn main() {
                         trusted_setup_file,
                         iterations,
                         disable_zk,
+                        app_bin_path,
                     ) => {
                         tracing::info!("SNARK prover finished");
                         result.expect("SNARK prover finished with error");
