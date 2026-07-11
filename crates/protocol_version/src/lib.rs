@@ -100,11 +100,11 @@ const V7: ProtocolVersion = ProtocolVersion {
 /// Corresponds to server's execution_version 8 (protocol v32.1, zksync-os 0.4.0 native batch prover)
 const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0x87293b7f26e6c40111d512e13d8d06fe868b3ef764bc7d3a42058efc0f73bd9e",
+        "0x2215af6cf294eed41e66f7052ab776fd0f0222b08841523fc85e442a1ce0e085",
     ),
-    airbender_version: AirbenderVersion("73d69b5"),
+    airbender_version: AirbenderVersion("e0a5b6d3"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
-    zkos_wrapper: ZkOsWrapperVersion("a9eec62"),
+    zkos_wrapper: ZkOsWrapperVersion("a676ded"),
     bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
 };
 
