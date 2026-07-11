@@ -118,6 +118,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
+    // The app program is what multi-batch SNARK jobs verify and combine their FRI
+    // proofs against; it is the same binary the FRI prover proves.
+    let app_program = zksync_os_snark_prover::resolve_app_program(Some(binary_path.clone()))?;
+
     // The SNARK wrapper caches its setup chain (VKs, precomputations) across jobs, so it is
     // created once. It is kept in a RefCell so the retry closure below can borrow it mutably.
     let snark_wrapper = RefCell::new(zksync_os_snark_prover::create_snark_wrapper(
@@ -187,6 +191,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     args.output_dir.clone(),
                     args.disable_zk,
                     &supported_versions,
+                    &app_program,
                 )
                 .await
             },

@@ -1,9 +1,14 @@
+use anyhow::Context as _;
 use protocol_version::SupportedProtocolVersions;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{
     CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperProof, SnarkWrapperVK,
+};
+use zksync_airbender_cli::prover_utils::{
+    combine_artifacts, CpuConfig, ProgramProverConfig, ProgramSource, ProofArtifact, ProofCounts,
+    ProofTarget, ProofTimingsMs, ProverBackend,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
@@ -75,7 +80,50 @@ pub fn generate_verification_key(
     }
 }
 
-pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<UnrolledProgramProof> {
+/// Resolve the app program (bin + derived text section) that the job's FRI proofs are
+/// proofs of. Defaults to the workspace's `multiblock_batch.bin`, mirroring the FRI prover.
+pub fn resolve_app_program(app_bin_path: Option<PathBuf>) -> anyhow::Result<ProgramSource> {
+    let manifest_path = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+    let binary_path = app_bin_path
+        .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
+    let source = ProgramSource::from_paths(
+        binary_path
+            .to_str()
+            .with_context(|| format!("non-UTF8 binary path {binary_path:?}"))?
+            .to_string(),
+        None,
+    );
+    // Fail fast on a bad path instead of erroring only when the first multi-proof job
+    // is picked.
+    for path in [&source.bin_path, &source.text_path] {
+        anyhow::ensure!(Path::new(path).is_file(), "program file not found: {path}");
+    }
+    Ok(source)
+}
+
+fn app_program_hashes(app_program: &ProgramSource) -> anyhow::Result<([u8; 32], [u8; 32])> {
+    use sha3::{Digest as _, Keccak256};
+    let bin_bytes = std::fs::read(&app_program.bin_path)
+        .with_context(|| format!("failed to read {}", app_program.bin_path))?;
+    let text_bytes = std::fs::read(&app_program.text_path)
+        .with_context(|| format!("failed to read {}", app_program.text_path))?;
+    Ok((
+        Keccak256::digest(&bin_bytes).into(),
+        Keccak256::digest(&text_bytes).into(),
+    ))
+}
+
+/// Merge the job's FRI proofs into the single unified-layer proof the SNARK wrapper expects.
+///
+/// Multi-proof jobs are combined on CPU via airbender's combined-recursion-layers flow:
+/// every input proof is verified against the app program, the combined statement is proved
+/// with the unified-layer recursion program and shrunk back to a converged unified-layer
+/// proof whose output words 0..8 are the keccak rolling hash of the batch outputs (words
+/// 8..16 carry the shared recursion chain through unchanged).
+pub fn merge_fris(
+    snark_proof_input: SnarkProofInputs,
+    app_program: &ProgramSource,
+) -> anyhow::Result<UnrolledProgramProof> {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
@@ -87,20 +135,65 @@ pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<Unrolle
         ..
     } = snark_proof_input;
 
-    match fri_proofs.len() {
-        1 => {
-            tracing::info!("No proof merging needed, only one proof provided");
-            Ok(fri_proofs.pop().unwrap())
-        }
-        // TODO: airbender's unrolled prover stack has no cross-batch proof merging yet
-        // (the old universal-verifier `CombinedRecursionLayers` flow was removed).
-        // Until it does, the sequencer must schedule exactly one batch per SNARK.
-        n => anyhow::bail!(
-            "SNARK job for batches {from_batch_number} to {to_batch_number} contains {n} FRI \
-             proofs; merging multiple FRI proofs is not supported by the unrolled prover stack \
-             yet — configure the sequencer to schedule one batch per SNARK"
-        ),
+    if fri_proofs.len() == 1 {
+        tracing::info!("No proof merging needed, only one proof provided");
+        return Ok(fri_proofs.pop().unwrap());
     }
+
+    tracing::info!(
+        "Combining {} FRI proofs for batches {from_batch_number} to {to_batch_number} into one",
+        fri_proofs.len()
+    );
+
+    // The security level is trusted caller input for `combine_artifacts`; use the level
+    // the FRI prover proves at (its `ProgramProverConfig::default()`).
+    let security_level = ProgramProverConfig::default().security_level;
+
+    // The sequencer sends bare proofs; wrap them into the artifact form `combine_artifacts`
+    // expects, binding them to the app program they will be verified against.
+    let (program_bin_keccak, program_text_keccak) = app_program_hashes(app_program)?;
+    let artifacts: Vec<ProofArtifact> = fri_proofs
+        .into_iter()
+        .enumerate()
+        .map(|(i, proof)| {
+            let (family, inits_and_teardowns, delegation) = proof.get_proof_counts();
+            ProofArtifact {
+                schema_version: 1,
+                security_level,
+                target: ProofTarget::RecursionUnified,
+                // The fields below are informational: the producing backend, cycle count
+                // and timings of a sequencer-supplied proof are unknown here.
+                backend: ProverBackend::Cpu,
+                batch_id: from_batch_number.0 as u64 + i as u64,
+                cycles: 0,
+                program_bin_keccak,
+                program_text_keccak,
+                timings_ms: ProofTimingsMs::default(),
+                proof_counts: ProofCounts {
+                    family_proof_count: family,
+                    inits_and_teardowns_proof_count: inits_and_teardowns,
+                    delegation_proof_count: delegation,
+                    delegation_proof_count_by_type: Vec::new(),
+                },
+                proof,
+            }
+        })
+        .collect();
+
+    let combined = combine_artifacts(
+        &artifacts,
+        app_program,
+        security_level,
+        &CpuConfig::default(),
+    )
+    .map_err(|e| {
+        anyhow::anyhow!(
+            "failed to combine FRI proofs for batches {from_batch_number} to \
+             {to_batch_number}: {e}"
+        )
+    })?;
+
+    Ok(combined.proof)
 }
 
 pub async fn run_linking_fri_snark(
@@ -109,6 +202,7 @@ pub async fn run_linking_fri_snark(
     trusted_setup_file: String,
     iterations: Option<usize>,
     disable_zk: bool,
+    app_bin_path: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let startup_started_at = Instant::now();
 
@@ -123,6 +217,7 @@ pub async fn run_linking_fri_snark(
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
+    let app_program = resolve_app_program(app_bin_path)?;
     let mut snark_wrapper = create_snark_wrapper(trusted_setup_file)?;
 
     SNARK_PROVER_METRICS
@@ -141,6 +236,7 @@ pub async fn run_linking_fri_snark(
             output_dir.clone(),
             disable_zk,
             &supported_versions,
+            &app_program,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -172,6 +268,7 @@ pub async fn run_inner(
     output_dir: String,
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
+    app_program: &ProgramSource,
 ) -> anyhow::Result<bool> {
     tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
     let snark_proof_input = match client.pick_snark_job().await {
@@ -236,9 +333,11 @@ pub async fn run_inner(
 
     let mut stats = SnarkProofTimeStats::new();
 
-    // A multi-proof job would be re-picked forever, so treat it as a fatal
-    // configuration error rather than skipping it.
-    let proof = stats.measure_step(SnarkStage::MergeFri, || merge_fris(snark_proof_input))?;
+    // A job whose proofs fail to combine would be re-picked forever, so treat merge
+    // failures as fatal rather than skipping the job.
+    let proof = stats.measure_step(SnarkStage::MergeFri, || {
+        merge_fris(snark_proof_input, app_program)
+    })?;
 
     tracing::info!("Wrapping and compressing FRI proof");
 
