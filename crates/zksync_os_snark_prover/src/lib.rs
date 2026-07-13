@@ -6,9 +6,13 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{
     CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperProof, SnarkWrapperVK,
 };
+#[cfg(not(feature = "gpu"))]
+use zksync_airbender_cli::prover_utils::{combine_artifacts, CpuConfig};
+#[cfg(feature = "gpu")]
+use zksync_airbender_cli::prover_utils::{combine_artifacts_gpu, GpuConfig};
 use zksync_airbender_cli::prover_utils::{
-    combine_artifacts, CpuConfig, ProgramProverConfig, ProgramSource, ProofArtifact, ProofCounts,
-    ProofTarget, ProofTimingsMs, ProverBackend,
+    ProgramProverConfig, ProgramSource, ProofArtifact, ProofCounts, ProofTarget, ProofTimingsMs,
+    ProverBackend,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
@@ -115,11 +119,13 @@ fn app_program_hashes(app_program: &ProgramSource) -> anyhow::Result<([u8; 32], 
 
 /// Merge the job's FRI proofs into the single unified-layer proof the SNARK wrapper expects.
 ///
-/// Multi-proof jobs are combined on CPU via airbender's combined-recursion-layers flow:
+/// Multi-proof jobs are combined via airbender's combined-recursion-layers flow:
 /// every input proof is verified against the app program, the combined statement is proved
 /// with the unified-layer recursion program and shrunk back to a converged unified-layer
 /// proof whose output words 0..8 are the keccak rolling hash of the batch outputs (words
-/// 8..16 carry the shared recursion chain through unchanged).
+/// 8..16 carry the shared recursion chain through unchanged). On `gpu` builds the
+/// unified-layer proving passes run on the GPU; verification and witness building stay
+/// on the host either way.
 pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     app_program: &ProgramSource,
@@ -180,13 +186,21 @@ pub fn merge_fris(
         })
         .collect();
 
+    #[cfg(feature = "gpu")]
+    let combined = combine_artifacts_gpu(
+        &artifacts,
+        app_program,
+        security_level,
+        &GpuConfig::default(),
+    );
+    #[cfg(not(feature = "gpu"))]
     let combined = combine_artifacts(
         &artifacts,
         app_program,
         security_level,
         &CpuConfig::default(),
-    )
-    .map_err(|e| {
+    );
+    let combined = combined.map_err(|e| {
         anyhow::anyhow!(
             "failed to combine FRI proofs for batches {from_batch_number} to \
              {to_batch_number}: {e}"

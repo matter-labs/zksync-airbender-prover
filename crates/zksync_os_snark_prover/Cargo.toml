@@ -36,4 +36,4 @@ vise-exporter.workspace = true
 url.workspace = true
 
 [features]
-gpu = ["zkos_wrapper/gpu"]
+gpu = ["zkos_wrapper/gpu", "zksync_airbender_cli/gpu"]
