@@ -1,18 +1,17 @@
 use anyhow::Context as _;
 use protocol_version::SupportedProtocolVersions;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{
     CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperProof, SnarkWrapperVK,
 };
 #[cfg(not(feature = "gpu"))]
-use zksync_airbender_cli::prover_utils::{combine_artifacts, CpuConfig};
+use zksync_airbender_cli::prover_utils::{combine_artifacts_carried_chain, CpuConfig};
 #[cfg(feature = "gpu")]
-use zksync_airbender_cli::prover_utils::{combine_artifacts_gpu, GpuConfig};
+use zksync_airbender_cli::prover_utils::{combine_artifacts_carried_chain_gpu, GpuConfig};
 use zksync_airbender_cli::prover_utils::{
-    ProgramProverConfig, ProgramSource, ProofArtifact, ProofCounts, ProofTarget, ProofTimingsMs,
-    ProverBackend,
+    ProgramProverConfig, ProofArtifact, ProofCounts, ProofTarget, ProofTimingsMs, ProverBackend,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
@@ -55,81 +54,44 @@ pub fn generate_verification_key(
     output_dir: String,
     trusted_setup_file: String,
     vk_verification_key_file: Option<String>,
-) {
-    let result = (|| -> anyhow::Result<()> {
-        zkos_wrapper::interface::cmd_generate_vk(
-            output_dir.clone().into(),
-            None,
-            None,
-            Some(trusted_setup_file.into()),
-            None,
-        )?;
-
-        if let Some(vk_file) = vk_verification_key_file {
-            let snark_vk_path = Path::new(&output_dir).join("snark_vk.json");
-            let vk: SnarkWrapperVK = zkos_wrapper::deserialize_from_file(
-                snark_vk_path
-                    .to_str()
-                    .ok_or_else(|| anyhow::anyhow!("non-UTF8 output dir {output_dir:?}"))?,
-            )?;
-            let vk_hash = zkos_wrapper::calculate_verification_key_hash(vk);
-            std::fs::write(vk_file, format!("{vk_hash:?}"))?;
-        }
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => tracing::info!("Verification keys generated successfully"),
-        Err(e) => tracing::error!("Error generating keys: {e:?}"),
-    }
-}
-
-/// Resolve the app program (bin + derived text section) that the job's FRI proofs are
-/// proofs of. Defaults to the workspace's `multiblock_batch.bin`, mirroring the FRI prover.
-pub fn resolve_app_program(app_bin_path: Option<PathBuf>) -> anyhow::Result<ProgramSource> {
-    let manifest_path = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let binary_path = app_bin_path
-        .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
-    let source = ProgramSource::from_paths(
-        binary_path
-            .to_str()
-            .with_context(|| format!("non-UTF8 binary path {binary_path:?}"))?
-            .to_string(),
+) -> anyhow::Result<()> {
+    zkos_wrapper::interface::cmd_generate_vk(
+        output_dir.clone().into(),
         None,
-    );
-    // Fail fast on a bad path instead of erroring only when the first multi-proof job
-    // is picked.
-    for path in [&source.bin_path, &source.text_path] {
-        anyhow::ensure!(Path::new(path).is_file(), "program file not found: {path}");
-    }
-    Ok(source)
-}
+        None,
+        Some(trusted_setup_file.into()),
+        None,
+    )?;
 
-fn app_program_hashes(app_program: &ProgramSource) -> anyhow::Result<([u8; 32], [u8; 32])> {
-    use sha3::{Digest as _, Keccak256};
-    let bin_bytes = std::fs::read(&app_program.bin_path)
-        .with_context(|| format!("failed to read {}", app_program.bin_path))?;
-    let text_bytes = std::fs::read(&app_program.text_path)
-        .with_context(|| format!("failed to read {}", app_program.text_path))?;
-    Ok((
-        Keccak256::digest(&bin_bytes).into(),
-        Keccak256::digest(&text_bytes).into(),
-    ))
+    if let Some(vk_file) = vk_verification_key_file {
+        let snark_vk_path = Path::new(&output_dir).join("snark_vk.json");
+        let vk: SnarkWrapperVK = zkos_wrapper::deserialize_from_file(
+            snark_vk_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("non-UTF8 output dir {output_dir:?}"))?,
+        )?;
+        let vk_hash = zkos_wrapper::calculate_verification_key_hash(vk);
+        std::fs::write(&vk_file, format!("{vk_hash:?}"))
+            .with_context(|| format!("failed to write verification key hash to {vk_file}"))?;
+    }
+
+    tracing::info!("Verification keys generated successfully");
+    Ok(())
 }
 
 /// Merge the job's FRI proofs into the single unified-layer proof the SNARK wrapper expects.
 ///
 /// Multi-proof jobs are combined via airbender's combined-recursion-layers flow:
-/// every input proof is verified against the app program, the combined statement is proved
-/// with the unified-layer recursion program and shrunk back to a converged unified-layer
-/// proof whose output words 0..8 are the keccak rolling hash of the batch outputs (words
-/// 8..16 carry the shared recursion chain through unchanged). On `gpu` builds the
+/// every input proof is verified against the recursion chain it carries (all proofs of a
+/// job must share one), the combined statement is proved with the unified-layer recursion
+/// program and shrunk back to a converged unified-layer proof whose output words 0..8 are
+/// the keccak rolling hash of the batch outputs (words 8..16 carry the shared recursion
+/// chain through unchanged). Like the single-proof path, this keeps the SNARK prover
+/// detached from the app binary: the chain is bound to the expected program by the
+/// downstream verifier of the wrapped proof, not by local files. On `gpu` builds the
 /// unified-layer proving passes run on the GPU; verification and witness building stay
 /// on the host either way.
-pub fn merge_fris(
-    snark_proof_input: SnarkProofInputs,
-    app_program: &ProgramSource,
-) -> anyhow::Result<UnrolledProgramProof> {
+pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<UnrolledProgramProof> {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
@@ -151,13 +113,15 @@ pub fn merge_fris(
         fri_proofs.len()
     );
 
-    // The security level is trusted caller input for `combine_artifacts`; use the level
+    // The security level is trusted caller input for the combine; use the level
     // the FRI prover proves at (its `ProgramProverConfig::default()`).
     let security_level = ProgramProverConfig::default().security_level;
 
-    // The sequencer sends bare proofs; wrap them into the artifact form `combine_artifacts`
-    // expects, binding them to the app program they will be verified against.
-    let (program_bin_keccak, program_text_keccak) = app_program_hashes(app_program)?;
+    // The sequencer sends bare proofs; wrap them into the artifact form the combine
+    // expects. The program keccaks are informational metadata (the proofs are bound to
+    // their program by the recursion chain they carry, not by these fields), and the
+    // producing program's files are unknown here.
+    let (program_bin_keccak, program_text_keccak) = ([0u8; 32], [0u8; 32]);
     let artifacts: Vec<ProofArtifact> = fri_proofs
         .into_iter()
         .enumerate()
@@ -187,19 +151,11 @@ pub fn merge_fris(
         .collect();
 
     #[cfg(feature = "gpu")]
-    let combined = combine_artifacts_gpu(
-        &artifacts,
-        app_program,
-        security_level,
-        &GpuConfig::default(),
-    );
+    let combined =
+        combine_artifacts_carried_chain_gpu(&artifacts, security_level, &GpuConfig::default());
     #[cfg(not(feature = "gpu"))]
-    let combined = combine_artifacts(
-        &artifacts,
-        app_program,
-        security_level,
-        &CpuConfig::default(),
-    );
+    let combined =
+        combine_artifacts_carried_chain(&artifacts, security_level, &CpuConfig::default());
     let combined = combined.map_err(|e| {
         anyhow::anyhow!(
             "failed to combine FRI proofs for batches {from_batch_number} to \
@@ -216,7 +172,6 @@ pub async fn run_linking_fri_snark(
     trusted_setup_file: String,
     iterations: Option<usize>,
     disable_zk: bool,
-    app_bin_path: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let startup_started_at = Instant::now();
 
@@ -231,7 +186,6 @@ pub async fn run_linking_fri_snark(
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    let app_program = resolve_app_program(app_bin_path)?;
     let mut snark_wrapper = create_snark_wrapper(trusted_setup_file)?;
 
     SNARK_PROVER_METRICS
@@ -250,7 +204,6 @@ pub async fn run_linking_fri_snark(
             output_dir.clone(),
             disable_zk,
             &supported_versions,
-            &app_program,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -282,7 +235,6 @@ pub async fn run_inner(
     output_dir: String,
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
-    app_program: &ProgramSource,
 ) -> anyhow::Result<bool> {
     tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
     let snark_proof_input = match client.pick_snark_job().await {
@@ -349,30 +301,27 @@ pub async fn run_inner(
 
     // A job whose proofs fail to combine would be re-picked forever, so treat merge
     // failures as fatal rather than skipping the job.
-    let proof = stats.measure_step(SnarkStage::MergeFri, || {
-        merge_fris(snark_proof_input, app_program)
-    })?;
+    let proof = stats.measure_step(SnarkStage::MergeFri, || merge_fris(snark_proof_input))?;
 
     tracing::info!("Wrapping and compressing FRI proof");
 
     // Proving failures are fatal: silently skipping would re-pick the same job forever, and a
     // failed attempt can leave the wrapper's cached GPU state unusable for the FRI phase of the
     // zksync_os_prover_service service that runs FRI and SNARK on the same process.
-    let stage_start = Instant::now();
-    let compression_proof: CompressionProof = (|| {
-        let risc_wrapper_proof = snark_wrapper.prove_risc_wrapper(proof)?;
-        snark_wrapper.prove_compression(risc_wrapper_proof)
-    })()
-    .map_err(|e| anyhow::anyhow!("failed to wrap/compress FRI proof: {e:?}"))?;
-    stats.observe_step(SnarkStage::FinalProof, stage_start.elapsed());
+    let compression_proof: CompressionProof = stats
+        .measure_step(SnarkStage::FinalProof, || {
+            let risc_wrapper_proof = snark_wrapper.prove_risc_wrapper(proof)?;
+            snark_wrapper.prove_compression(risc_wrapper_proof)
+        })
+        .map_err(|e| anyhow::anyhow!("failed to wrap/compress FRI proof: {e:?}"))?;
 
     tracing::info!("SNARKifying proof");
     // note that the API is use_zk, so we invert the disable_zk flag
-    let stage_start = Instant::now();
-    let snark_proof: SnarkWrapperProof = snark_wrapper
-        .prove_snark(compression_proof, !disable_zk)
+    let snark_proof: SnarkWrapperProof = stats
+        .measure_step(SnarkStage::Snark, || {
+            snark_wrapper.prove_snark(compression_proof, !disable_zk)
+        })
         .map_err(|e| anyhow::anyhow!("failed to SNARKify proof: {e:?}"))?;
-    stats.observe_step(SnarkStage::Snark, stage_start.elapsed());
     stats.observe_full();
     tracing::info!("Finished generating proof, time stats: {}", stats);
 
