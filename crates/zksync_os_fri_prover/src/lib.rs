@@ -251,7 +251,13 @@ pub async fn run_inner(
 
     let started_at = Instant::now();
 
-    // make prover_input (Vec<u8>) into Vec<u32>:
+    // make prover_input (Vec<u8>) into Vec<u32>, rejecting malformed input instead of
+    // silently truncating trailing bytes:
+    anyhow::ensure!(
+        prover_input.len() % 4 == 0,
+        "prover input for batch {batch_number} has {} bytes, expected a multiple of 4",
+        prover_input.len()
+    );
     let prover_input: Vec<u32> = prover_input
         .chunks_exact(4)
         .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))

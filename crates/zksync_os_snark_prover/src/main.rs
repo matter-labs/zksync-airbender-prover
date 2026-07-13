@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
@@ -72,27 +71,22 @@ enum Commands {
         /// Name of the prover for identification in the sequencer
         #[arg(long, default_value = "unknown_prover")]
         prover_name: String,
-        /// Path to `app.bin`, used to verify and combine the job's FRI proofs when a
-        /// SNARK spans multiple batches. Defaults to the workspace's `multiblock_batch.bin`.
-        #[arg(long)]
-        app_bin_path: Option<PathBuf>,
     },
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     init_tracing();
     let cli = Cli::parse();
 
     // Circuit synthesis (key generation and the SNARK wrapper chain) exhausts the default
     // stack, and the main thread's size is fixed by the OS. Give every thread the runtime
     // spawns (workers and blocking threads alike) an explicit stack size: it only limits
-    // how far the stack may grow, nothing is allocated up front. RUST_MIN_STACK is
-    // honored as an override.
+    // how far the stack may grow, nothing is allocated up front. RUST_MIN_STACK, when set,
+    // is used as-is (so constrained environments can also lower it); otherwise 256 MiB.
     let stack_size = std::env::var("RUST_MIN_STACK")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(0)
-        .max(256 * 1024 * 1024);
+        .unwrap_or(256 * 1024 * 1024);
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .thread_stack_size(stack_size)
         .enable_all()
@@ -119,7 +113,7 @@ fn main() {
                 })
                 .await
                 .expect("key generation task panicked")
-            });
+            })?;
         }
         Commands::RunProver {
             sequencer_urls,
@@ -133,7 +127,6 @@ fn main() {
             request_timeout_secs,
             disable_zk,
             prover_name,
-            app_bin_path,
         } => {
             let (stop_sender, stop_receiver) = watch::channel(false);
 
@@ -158,17 +151,26 @@ fn main() {
                     request_timeout_secs
                 );
 
-                tokio::select! {
-                    result = run_linking_fri_snark(
+                // The proving chain is synchronous and stack-hungry; drive it from a
+                // runtime blocking thread (which gets the explicit stack size above)
+                // rather than polling it on the OS-sized main thread via `block_on`.
+                let runtime_handle = tokio::runtime::Handle::current();
+                let prover_task = tokio::task::spawn_blocking(move || {
+                    runtime_handle.block_on(run_linking_fri_snark(
                         clients,
                         output_dir,
                         trusted_setup_file,
                         iterations,
                         disable_zk,
-                        app_bin_path,
-                    ) => {
+                    ))
+                });
+
+                tokio::select! {
+                    result = prover_task => {
                         tracing::info!("SNARK prover finished");
-                        result.expect("SNARK prover finished with error");
+                        result
+                            .expect("SNARK prover task panicked")
+                            .expect("SNARK prover finished with error");
                         stop_sender.send(true).expect("failed to send stop signal");
                     }
                     _ = tokio::signal::ctrl_c() => {
@@ -189,4 +191,6 @@ fn main() {
             });
         }
     }
+
+    Ok(())
 }
