@@ -104,7 +104,7 @@ const V8: ProtocolVersion = ProtocolVersion {
     ),
     airbender_version: AirbenderVersion("67bffee0"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
-    zkos_wrapper: ZkOsWrapperVersion("01ba3676"),
+    zkos_wrapper: ZkOsWrapperVersion("cc4e5202"),
     bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
 };
 

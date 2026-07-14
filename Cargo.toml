@@ -34,8 +34,9 @@ zksync_airbender_execution_utils = { package = "execution_utils", git = "https:/
 zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", rev = "67bffee0" }
 
 # zkos-wrapper dependencies
-# rev = head of `dz-airbender-combined-recursion-layers` (airbender bumped to 67bffee0).
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "01ba36764ad0c0affd93a2c1e827117a98e98214" }
+# rev = head of `dz-airbender-combined-recursion-layers` (airbender pinned to 67bffee0,
+# host-side setup cache carried between SNARK wrapper sessions).
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "cc4e52026efba683d3f136c996d43cc2c2b09665" }
 
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps

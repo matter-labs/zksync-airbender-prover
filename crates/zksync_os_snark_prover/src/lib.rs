@@ -4,7 +4,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{
-    CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperProof, SnarkWrapperVK,
+    CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperHostCache, SnarkWrapperProof,
+    SnarkWrapperVK,
 };
 #[cfg(not(feature = "gpu"))]
 use zksync_airbender_cli::prover_utils::CpuConfig;
@@ -39,9 +40,16 @@ pub enum WrapperSource {
     Resident(Box<SnarkWrapper>),
     /// Create the wrapper after a job's proofs are merged and drop it when the job
     /// finishes, so FRI proving and the merge always see a clean GPU (the combined
-    /// `zksync-os-prover-service`). Costs one setup-chain rebuild per SNARK job,
-    /// reported as the `wrapper_setup` stage.
-    PerJob { trusted_setup_file: String },
+    /// `zksync-os-prover-service`). The wrapper's host-side setup caches survive the
+    /// drop in `host_cache`, so only the process's first SNARK job pays the full
+    /// setup-chain derivation (reported as the `wrapper_setup` stage); later jobs
+    /// rebuild the wrapper from the cache in negligible time.
+    PerJob {
+        trusted_setup_file: String,
+        /// Setup caches carried between jobs; `None` until the first job's wrapper is
+        /// retired. Holds no GPU memory (see [`SnarkWrapperHostCache`]).
+        host_cache: Option<Box<SnarkWrapperHostCache>>,
+    },
 }
 
 /// Build the SNARK wrapper session used for proving and VK generation.
@@ -50,15 +58,29 @@ pub enum WrapperSource {
 /// wrapper chain over zkos-wrapper's embedded unified recursion verifier binary, and the
 /// app binary is bound through the recursion chain carried inside the FRI proof itself.
 pub fn create_snark_wrapper(trusted_setup_file: String) -> anyhow::Result<SnarkWrapper> {
-    #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
-    let mut wrapper = SnarkWrapper::new(SnarkWrapperConfig {
+    create_snark_wrapper_with_cache(trusted_setup_file, None)
+}
+
+/// Like [`create_snark_wrapper`], but adopt the setup caches of a retired wrapper
+/// (see [`SnarkWrapper::into_host_cache`]) so the chain derivation is skipped.
+pub fn create_snark_wrapper_with_cache(
+    trusted_setup_file: String,
+    host_cache: Option<SnarkWrapperHostCache>,
+) -> anyhow::Result<SnarkWrapper> {
+    let config = SnarkWrapperConfig {
         trusted_setup: Some(trusted_setup_file.into()),
         ..Default::default()
-    })?;
+    };
+    #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
+    let mut wrapper = match host_cache {
+        Some(cache) => SnarkWrapper::new_with_host_cache(config, cache)?,
+        None => SnarkWrapper::new(config)?,
+    };
 
     // Mirror the old eager GPU precomputation: derive the full VK/setup chain up front so
     // that setup problems surface at startup rather than on the first picked job (and the
-    // startup-time metric keeps its meaning). Skipped on CPU, as before.
+    // startup-time metric keeps its meaning). Skipped on CPU, as before. With a warm
+    // host cache this returns the cached VK and derives nothing.
     #[cfg(feature = "gpu")]
     {
         tracing::info!("Computing SNARK precomputations");
@@ -377,18 +399,24 @@ pub async fn run_inner(
     })?;
 
     // Materialize the wrapper only after the merge: the merge's GPU prover sizes its
-    // device pool to all free VRAM, so the wrapper's device-resident setups must not
-    // be alive yet. In `PerJob` mode the wrapper (and its VRAM) lives exactly from
-    // here until this job is done.
-    let mut per_job_wrapper;
+    // device pool to all free VRAM, so the wrapper's device-resident state must not
+    // be alive yet. In `PerJob` mode the wrapper (and any VRAM it touches) lives
+    // exactly from here until this job's proving is done; its host-side setup caches
+    // carry over from the previous job, so only the first job of the process pays the
+    // full setup derivation in the `wrapper_setup` stage.
+    let mut per_job_wrapper = None;
     let snark_wrapper: &mut SnarkWrapper = match wrapper_source {
         WrapperSource::Resident(wrapper) => wrapper,
-        WrapperSource::PerJob { trusted_setup_file } => {
-            tracing::info!("Building per-job SNARK wrapper (device setup chain)");
-            per_job_wrapper = stats.measure_step(SnarkStage::WrapperSetup, || {
-                create_snark_wrapper(trusted_setup_file.clone())
-            })?;
-            &mut per_job_wrapper
+        WrapperSource::PerJob {
+            trusted_setup_file,
+            host_cache,
+        } => {
+            tracing::info!("Building per-job SNARK wrapper");
+            let cache = host_cache.take().map(|cache| *cache);
+            per_job_wrapper = Some(stats.measure_step(SnarkStage::WrapperSetup, || {
+                create_snark_wrapper_with_cache(trusted_setup_file.clone(), cache)
+            })?);
+            per_job_wrapper.as_mut().expect("wrapper was just built")
         }
     };
 
@@ -413,6 +441,15 @@ pub async fn run_inner(
         .map_err(|e| anyhow::anyhow!("failed to SNARKify proof: {e:?}"))?;
     stats.observe_full();
     tracing::info!("Finished generating proof, time stats: {}", stats);
+
+    // The per-job wrapper is done with the GPU; retire it but keep its host-side setup
+    // caches so the next job's wrapper build is a cheap rehydration instead of a full
+    // re-derivation.
+    if let Some(wrapper) = per_job_wrapper {
+        if let WrapperSource::PerJob { host_cache, .. } = wrapper_source {
+            *host_cache = Some(Box::new(wrapper.into_host_cache()));
+        }
+    }
 
     // Persist the proof next to the other artifacts, mirroring the old flow (best effort).
     let snark_proof_path = Path::new(&output_dir).join("snark_proof.json");
