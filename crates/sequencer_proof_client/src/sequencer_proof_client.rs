@@ -11,11 +11,8 @@ use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use bellman::{bn256::Bn256, plonk::better_better_cs::proof::Proof as PlonkProof};
-use circuit_definitions::circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::StatusCode;
-use serde_json;
 use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 
@@ -115,11 +112,7 @@ impl SequencerProofClient {
     /// # Errors
     /// * if serialization/deserialization fails (needed for conversion)
     pub fn serialize_snark_proof(&self, proof: &SnarkWrapperProof) -> anyhow::Result<String> {
-        let serialized_proof = serde_json::to_string(&proof)?;
-
-        let codegen_snark_proof: PlonkProof<Bn256, ZkSyncSnarkWrapperCircuit> =
-            serde_json::from_str(&serialized_proof)?;
-        let (_, serialized_proof) = crypto_codegen::serialize_proof(&codegen_snark_proof);
+        let (_, serialized_proof) = crypto_codegen::serialize_proof(proof);
 
         let byte_serialized_proof = serialized_proof
             .iter()

@@ -2,6 +2,7 @@
 // SNARK & FRI should be libs only and expose no binaries themselves.
 // We'll need slightly more "involved" CLI args, but nothing too complex.
 use std::{
+    cell::RefCell,
     future::Future,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -11,16 +12,6 @@ use anyhow::Context;
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-#[cfg(feature = "gpu")]
-use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
-use zksync_airbender_cli::prover_utils::load_binary_from_path;
-#[cfg(not(feature = "gpu"))]
-use zksync_airbender_cli::prover_utils::GpuSharedState;
-#[cfg(feature = "gpu")]
-use zksync_airbender_cli::prover_utils::GpuSharedState;
-use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
-#[cfg(feature = "gpu")]
-use zksync_os_snark_prover::compute_compression_vk;
 use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
 
 /// Command-line arguments for the Zksync OS prover
@@ -58,9 +49,6 @@ pub struct Args {
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
-    /// Circuit limit - max number of MainVM circuits to instantiate to run the batch fully
-    #[arg(long, default_value = "10000")]
-    pub circuit_limit: usize,
     /// Directory to store the output files for SNARK prover
     #[arg(long)]
     pub output_dir: String,
@@ -126,21 +114,29 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let binary_path = args
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
-    let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
-    let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    #[cfg(feature = "gpu")]
-    let precomputations = {
-        tracing::info!("Computing SNARK precomputations");
-        let compression_vk = compute_compression_vk(binary_path.to_str().unwrap().to_string());
-        let precomputations =
-            gpu_create_snark_setup_data(&compression_vk, &args.trusted_setup_file);
-        tracing::info!("Finished computing SNARK precomputations");
-        precomputations
-    };
+    // The FRI prover and the FRI-proof combiner each size their device pool to "all
+    // free VRAM" and need essentially the whole card (on prod-shaped L4s a resident
+    // SNARK wrapper starves the FRI prover into OOM). So the wrapper is built per
+    // SNARK job — after the job's proofs are merged — and dropped with the job,
+    // mirroring how `fri_prover` is dropped before SNARKing. Its host-side setup
+    // caches survive between jobs, so only the first job pays the full setup
+    // derivation (reported as the `wrapper_setup` stage). It is kept in a RefCell so
+    // the retry closure below can borrow it mutably.
+    let wrapper_source = RefCell::new(zksync_os_snark_prover::WrapperSource::PerJob {
+        trusted_setup_file: args.trusted_setup_file.clone(),
+        host_cache: None,
+    });
+
+    // The FRI-proof combiner likewise caches its setup data (and, on `gpu` builds, the
+    // GPU prover's host state — pinned host RAM only, no VRAM) across jobs and across
+    // the FRI/SNARK phase alternation. Its caches build lazily on the first multi-proof
+    // SNARK job rather than at startup, so a service that never sees multi-proof jobs
+    // doesn't pin tens of gigabytes of host RAM for nothing.
+    let combiner = RefCell::new(zksync_os_snark_prover::create_combiner());
 
     tracing::info!("Starting Zksync OS Prover Service");
 
@@ -152,23 +148,16 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     for client in clients.iter().cycle() {
         let mut fri_proof_count = 0;
 
-        // For regular fri proving, we keep using reduced RiscV machine.
-        #[cfg(feature = "gpu")]
-        let mut gpu_state = GpuSharedState::new(
-            &binary,
-            zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-        );
-        #[cfg(not(feature = "gpu"))]
-        let mut gpu_state = GpuSharedState::new(&binary);
+        // The FRI prover holds the program setups (and the GPU context when built with the
+        // `gpu` feature); it is recreated each cycle so the GPU is released before SNARKing.
+        let fri_prover = zksync_os_fri_prover::create_prover(&binary_path)?;
 
         // Run FRI prover until we hit one of the limits
         tracing::info!("Running FRI prover on sequencer {}", client.sequencer_url());
         loop {
             let proof_generated = zksync_os_fri_prover::run_inner(
                 client.as_ref(),
-                &binary,
-                args.circuit_limit,
-                &mut gpu_state,
+                &fri_prover,
                 args.fri_path.clone(),
                 &supported_versions,
             )
@@ -190,28 +179,31 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 }
             }
         }
-        #[cfg(feature = "gpu")]
-        drop(gpu_state);
+        // Release the FRI prover's airbender GPU resources (as now SNARKing will be taking them).
+        drop(fri_prover);
 
         // Here we do exactly one SNARK proof
         tracing::info!(
             "Running SNARK prover on sequencer {}",
             client.sequencer_url()
         );
+        // Holding the RefCell guard across the await is fine here: `run` executes as a
+        // single (non-Send) future and SNARK attempts run strictly sequentially, so no
+        // concurrent borrow of the wrapper can occur.
+        #[allow(clippy::await_holding_refcell_ref)]
         let proof_generated = acquire_snark_proof(
             Duration::from_secs(args.snark_acquire_timeout_secs),
             SNARK_POLL_INTERVAL,
-            || {
+            || async {
                 zksync_os_snark_prover::run_inner(
                     client.as_ref(),
-                    &verifier_binary,
+                    &mut wrapper_source.borrow_mut(),
+                    &mut combiner.borrow_mut(),
                     args.output_dir.clone(),
-                    args.trusted_setup_file.clone(),
-                    #[cfg(feature = "gpu")]
-                    &precomputations,
                     args.disable_zk,
                     &supported_versions,
                 )
+                .await
             },
         )
         .await

@@ -32,13 +32,27 @@ pub struct SnarkProverMetrics {
     pub time_taken_startup: Histogram,
     #[metrics(buckets = vise::Buckets::linear(1.0..=150.0, 20.0), unit = vise::Unit::Seconds)]
     pub time_taken_merge_fri: Histogram,
+    /// Time spent building the per-job SNARK wrapper in the combined prover service,
+    /// which drops the wrapper between jobs so it can't compete with the FRI prover
+    /// for the GPU (see `WrapperSource::PerJob`). The full setup-chain derivation is
+    /// paid only by the process's first job; later jobs rehydrate from the host-side
+    /// cache in negligible time.
+    #[metrics(buckets = vise::Buckets::linear(30.0..=300.0, 30.0), unit = vise::Unit::Seconds)]
+    pub time_taken_wrapper_setup: Histogram,
     #[metrics(buckets = vise::Buckets::linear(5.0..=20.0, 2.5), unit = vise::Unit::Seconds)]
     pub time_taken_final_proof: Histogram,
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
     pub time_taken_snark: Histogram,
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
     pub time_taken_full: Histogram,
+    /// Time spent building the merge combiner's caches (unified-level setup and, on
+    /// GPU builds, the prover host state). Observed only when a merge found them cold,
+    /// normally once per process on the first multi-proof job.
+    #[metrics(buckets = vise::Buckets::linear(10.0..=300.0, 30.0), unit = vise::Unit::Seconds)]
+    pub time_taken_merge_warm_up: Histogram,
     pub fri_proofs_merged: Gauge,
+    /// Number of unified proving passes (combined pass + shrink passes) of the last merge.
+    pub merge_unified_passes: Gauge,
     pub latest_proven_batch: Gauge,
     /// Number of timeout errors when communicating with sequencer
     pub timeout_errors: Counter,
@@ -50,6 +64,7 @@ pub(crate) static SNARK_PROVER_METRICS: vise::Global<SnarkProverMetrics> = vise:
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SnarkStage {
     MergeFri,
+    WrapperSetup,
     FinalProof,
     Snark,
     Full,
@@ -62,6 +77,7 @@ impl fmt::Display for SnarkStage {
             "{}",
             match self {
                 SnarkStage::MergeFri => "merge_fri",
+                SnarkStage::WrapperSetup => "wrapper_setup",
                 SnarkStage::FinalProof => "final_proof",
                 SnarkStage::Snark => "snark",
                 SnarkStage::Full => "full",
@@ -97,6 +113,9 @@ impl SnarkProofTimeStats {
         match stage {
             SnarkStage::MergeFri => SNARK_PROVER_METRICS
                 .time_taken_merge_fri
+                .observe(duration.as_secs_f64()),
+            SnarkStage::WrapperSetup => SNARK_PROVER_METRICS
+                .time_taken_wrapper_setup
                 .observe(duration.as_secs_f64()),
             SnarkStage::FinalProof => SNARK_PROVER_METRICS
                 .time_taken_final_proof

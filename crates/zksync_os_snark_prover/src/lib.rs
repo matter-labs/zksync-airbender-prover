@@ -1,24 +1,21 @@
-#[cfg(feature = "gpu")]
-use proof_compression::serialization::PlonkSnarkVerifierCircuitDeviceSetupWrapper;
+use anyhow::Context as _;
 use protocol_version::SupportedProtocolVersions;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-#[cfg(feature = "gpu")]
 use zkos_wrapper::{
-    generate_risk_wrapper_vk,
-    gpu::{compression::get_compression_setup, snark::gpu_create_snark_setup_data},
-    BoojumWorker, CompressionVK, SnarkWrapperVK,
+    CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperHostCache, SnarkWrapperProof,
+    SnarkWrapperVK,
 };
-use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
+#[cfg(not(feature = "gpu"))]
+use zksync_airbender_cli::prover_utils::CpuConfig;
+#[cfg(feature = "gpu")]
+use zksync_airbender_cli::prover_utils::GpuConfig;
 use zksync_airbender_cli::prover_utils::{
-    create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
+    CarriedChainCombiner, ProgramProverConfig, ProofArtifact, ProofCounts, ProofTarget,
+    ProofTimingsMs, ProverBackend,
 };
-use zksync_airbender_execution_utils::{
-    generate_oracle_data_for_universal_verifier, generate_oracle_data_from_metadata_and_proof_list,
-    get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
-    UNIVERSAL_CIRCUIT_VERIFIER,
-};
+use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
 use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
@@ -30,131 +27,231 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
+/// Where [`run_inner`] gets its SNARK wrapper from.
+///
+/// The wrapper's setup chain includes several GiB of device-resident state (phase 1/2
+/// GPU setups and the phase-3 device setup), while the FRI prover and the FRI-proof
+/// combiner each size their device pools to "all free VRAM" and need essentially the
+/// whole card (prod FRI provers run on a dedicated L4). A resident wrapper therefore
+/// starves them when everything shares one GPU.
+pub enum WrapperSource {
+    /// Long-lived wrapper reused across jobs. For deployments where the wrapper does
+    /// not compete for the GPU (the standalone SNARK prover binary).
+    Resident(Box<SnarkWrapper>),
+    /// Create the wrapper after a job's proofs are merged and drop it when the job
+    /// finishes, so FRI proving and the merge always see a clean GPU (the combined
+    /// `zksync-os-prover-service`). The wrapper's host-side setup caches survive the
+    /// drop in `host_cache`, so only the process's first SNARK job pays the full
+    /// setup-chain derivation (reported as the `wrapper_setup` stage); later jobs
+    /// rebuild the wrapper from the cache in negligible time.
+    PerJob {
+        trusted_setup_file: String,
+        /// Setup caches carried between jobs; `None` until the first job's wrapper is
+        /// retired. Holds no GPU memory (see [`SnarkWrapperHostCache`]).
+        host_cache: Option<Box<SnarkWrapperHostCache>>,
+    },
+}
+
+/// Build the SNARK wrapper session used for proving and VK generation.
+///
+/// The wrapper is constructed without an explicit binary: the verification keys bind the
+/// wrapper chain over zkos-wrapper's embedded unified recursion verifier binary, and the
+/// app binary is bound through the recursion chain carried inside the FRI proof itself.
+pub fn create_snark_wrapper(trusted_setup_file: String) -> anyhow::Result<SnarkWrapper> {
+    create_snark_wrapper_with_cache(trusted_setup_file, None)
+}
+
+/// Like [`create_snark_wrapper`], but adopt the setup caches of a retired wrapper
+/// (see [`SnarkWrapper::into_host_cache`]) so the chain derivation is skipped.
+pub fn create_snark_wrapper_with_cache(
+    trusted_setup_file: String,
+    host_cache: Option<SnarkWrapperHostCache>,
+) -> anyhow::Result<SnarkWrapper> {
+    let config = SnarkWrapperConfig {
+        trusted_setup: Some(trusted_setup_file.into()),
+        ..Default::default()
+    };
+    #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
+    let mut wrapper = match host_cache {
+        Some(cache) => SnarkWrapper::new_with_host_cache(config, cache)?,
+        None => SnarkWrapper::new(config)?,
+    };
+
+    // Mirror the old eager GPU precomputation: derive the full VK/setup chain up front so
+    // that setup problems surface at startup rather than on the first picked job (and the
+    // startup-time metric keeps its meaning). Skipped on CPU, as before. With a warm
+    // host cache this returns the cached VK and derives nothing.
+    #[cfg(feature = "gpu")]
+    {
+        tracing::info!("Computing SNARK precomputations");
+        wrapper.snark_vk()?;
+        tracing::info!("Finished computing SNARK precomputations");
+    }
+
+    Ok(wrapper)
+}
+
 pub fn generate_verification_key(
-    binary_path: String,
     output_dir: String,
     trusted_setup_file: String,
     vk_verification_key_file: Option<String>,
-) {
-    match zkos_wrapper::generate_vk(
-        Some(binary_path),
-        output_dir,
-        Some(trusted_setup_file),
-        true,
-        zksync_airbender_execution_utils::RecursionStrategy::UseReducedLog23Machine,
-    ) {
-        Ok(key) => {
-            if let Some(vk_file) = vk_verification_key_file {
-                std::fs::write(vk_file, format!("{key:?}"))
-                    .expect("Failed to write verification key to file");
-            } else {
-                tracing::info!("Verification key generated successfully: {:#?}", key);
-            }
-        }
-        Err(e) => {
-            tracing::error!("Error generating keys: {e}");
-        }
+) -> anyhow::Result<()> {
+    zkos_wrapper::interface::cmd_generate_vk(
+        output_dir.clone().into(),
+        None,
+        None,
+        Some(trusted_setup_file.into()),
+        None,
+    )?;
+
+    if let Some(vk_file) = vk_verification_key_file {
+        let snark_vk_path = Path::new(&output_dir).join("snark_vk.json");
+        let vk: SnarkWrapperVK = zkos_wrapper::deserialize_from_file(
+            snark_vk_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("non-UTF8 output dir {output_dir:?}"))?,
+        )?;
+        let vk_hash = zkos_wrapper::calculate_verification_key_hash(vk);
+        std::fs::write(&vk_file, format!("{vk_hash:?}"))
+            .with_context(|| format!("failed to write verification key hash to {vk_file}"))?;
+    }
+
+    tracing::info!("Verification keys generated successfully");
+    Ok(())
+}
+
+/// Build the FRI-proof combiner used by [`merge_fris`] for multi-proof jobs.
+///
+/// The combiner caches everything that survives across jobs — the unified recursion
+/// program's setup data and, on `gpu` builds, the GPU prover's host state (pinned host
+/// memory pools and circuit precomputations). Construct it once per process next to the
+/// SNARK wrapper; per job only the CUDA contexts and device memory pool are created and
+/// they are released when the merge finishes, so the GPU is free for the wrap phases.
+///
+/// The caches build lazily on the first multi-proof job; call
+/// [`CarriedChainCombiner::warm_up`] to pay that cost at startup instead. Note the GPU
+/// host state pins tens of gigabytes of host RAM for the lifetime of the combiner.
+pub fn create_combiner() -> CarriedChainCombiner {
+    // The security level is trusted caller input for the combine; use the level
+    // the FRI prover proves at (its `ProgramProverConfig::default()`).
+    let security_level = ProgramProverConfig::default().security_level;
+    #[cfg(feature = "gpu")]
+    {
+        CarriedChainCombiner::new_gpu(security_level, GpuConfig::default())
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        CarriedChainCombiner::new_cpu(security_level, CpuConfig::default())
     }
 }
 
+/// Merge the job's FRI proofs into the single unified-layer proof the SNARK wrapper expects.
+///
+/// Multi-proof jobs are combined via airbender's combined-recursion-layers flow:
+/// every input proof is verified against the recursion chain it carries (all proofs of a
+/// job must share one), the combined statement is proved with the unified-layer recursion
+/// program and shrunk back to a converged unified-layer proof whose output words 0..8 are
+/// the keccak rolling hash of the batch outputs (words 8..16 carry the shared recursion
+/// chain through unchanged). Like the single-proof path, this keeps the SNARK prover
+/// detached from the app binary: the chain is bound to the expected program by the
+/// downstream verifier of the wrapped proof, not by local files. On `gpu` builds the
+/// unified-layer proving passes run on the GPU; verification and witness building stay
+/// on the host either way.
 pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
-    verifier_binary: &Vec<u32>,
-    gpu_state: &mut Option<&mut GpuSharedState>,
-) -> ProgramProof {
+    combiner: &mut CarriedChainCombiner,
+) -> anyhow::Result<UnrolledProgramProof> {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
 
-    if snark_proof_input.fri_proofs.len() == 1 {
+    let SnarkProofInputs {
+        from_batch_number,
+        to_batch_number,
+        mut fri_proofs,
+        ..
+    } = snark_proof_input;
+
+    if fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
-        return snark_proof_input.fri_proofs[0].clone();
-    }
-    tracing::info!("Starting proof merging");
-
-    let mut proof = snark_proof_input.fri_proofs[0].clone();
-    for i in 1..snark_proof_input.fri_proofs.len() {
-        let up_to_batch = snark_proof_input.from_batch_number.0 + i as u32 - 1;
-        let curr_batch = snark_proof_input.from_batch_number.0 + i as u32;
-        tracing::info!(
-            "Linking proofs up to {} with proof for batch {}",
-            up_to_batch,
-            curr_batch
-        );
-        let second_proof = snark_proof_input.fri_proofs[i].clone();
-
-        let (first_metadata, first_proof_list) = proof.to_metadata_and_proof_list();
-        let (second_metadata, second_proof_list) = second_proof.to_metadata_and_proof_list();
-
-        let first_oracle =
-            generate_oracle_data_from_metadata_and_proof_list(&first_metadata, &first_proof_list);
-        let second_oracle =
-            generate_oracle_data_from_metadata_and_proof_list(&second_metadata, &second_proof_list);
-
-        let mut merged_input = vec![VerifierCircuitsIdentifiers::CombinedRecursionLayers as u32];
-        merged_input.extend(first_oracle);
-        merged_input.extend(second_oracle);
-
-        let (mut current_proof_list, mut proof_metadata) = create_proofs_internal(
-            verifier_binary,
-            merged_input,
-            &zksync_airbender_execution_utils::Machine::Reduced,
-            100, // Guessing - FIXME!!
-            Some(first_metadata.create_prev_metadata()),
-            gpu_state,
-            &mut Some(0f64),
-        );
-        // Let's do recursion.
-        let mut recursion_level = 0;
-
-        while current_proof_list.reduced_proofs.len() > 2 {
-            tracing::info!("Recursion step {} after fri merging", recursion_level);
-            recursion_level += 1;
-            let non_determinism_data =
-                generate_oracle_data_for_universal_verifier(&proof_metadata, &current_proof_list);
-
-            (current_proof_list, proof_metadata) = create_proofs_internal(
-                verifier_binary,
-                non_determinism_data,
-                &Machine::Reduced,
-                proof_metadata.total_proofs(),
-                Some(proof_metadata.create_prev_metadata()),
-                gpu_state,
-                &mut Some(0f64),
-            );
-        }
-
-        proof = ProgramProof::from_proof_list_and_metadata(&current_proof_list, &proof_metadata);
-        tracing::info!("Finished linking proofs up to batch {}", up_to_batch);
+        return Ok(fri_proofs.pop().unwrap());
     }
 
-    // TODO: We can do a recursion step here as well, IIUC
     tracing::info!(
-        "Finishing linking all proofs from {} to {}",
-        snark_proof_input.from_batch_number,
-        snark_proof_input.to_batch_number
+        "Combining {} FRI proofs for batches {from_batch_number} to {to_batch_number} into one",
+        fri_proofs.len()
     );
-    proof
-}
 
-#[cfg(feature = "gpu")]
-pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
-    let worker = BoojumWorker::new();
+    let security_level = combiner.security_level();
 
-    let risc_wrapper_vk = generate_risk_wrapper_vk(
-        Some(binary_path),
-        true,
-        RecursionStrategy::UseReducedLog23Machine,
-        &worker,
-    )
-    .unwrap();
+    // The sequencer sends bare proofs; wrap them into the artifact form the combine
+    // expects. The program keccaks are informational metadata (the proofs are bound to
+    // their program by the recursion chain they carry, not by these fields), and the
+    // producing program's files are unknown here.
+    let (program_bin_keccak, program_text_keccak) = ([0u8; 32], [0u8; 32]);
+    let artifacts: Vec<ProofArtifact> = fri_proofs
+        .into_iter()
+        .enumerate()
+        .map(|(i, proof)| {
+            let (family, inits_and_teardowns, delegation) = proof.get_proof_counts();
+            ProofArtifact {
+                schema_version: 1,
+                security_level,
+                target: ProofTarget::RecursionUnified,
+                // The fields below are informational: the producing backend, cycle count
+                // and timings of a sequencer-supplied proof are unknown here.
+                backend: ProverBackend::Cpu,
+                batch_id: from_batch_number.0 as u64 + i as u64,
+                cycles: 0,
+                program_bin_keccak,
+                program_text_keccak,
+                timings_ms: ProofTimingsMs::default(),
+                proof_counts: ProofCounts {
+                    family_proof_count: family,
+                    inits_and_teardowns_proof_count: inits_and_teardowns,
+                    delegation_proof_count: delegation,
+                    delegation_proof_count_by_type: Vec::new(),
+                },
+                proof,
+            }
+        })
+        .collect();
 
-    let (_, compression_vk, _) = get_compression_setup(&worker, risc_wrapper_vk);
-    compression_vk
+    // First multi-proof job on a cold combiner also builds its caches; measure that
+    // separately so per-job pass timings stay comparable across jobs.
+    let warm_up_started_at = Instant::now();
+    combiner.warm_up();
+    let warm_up = warm_up_started_at.elapsed();
+    if warm_up > Duration::from_millis(100) {
+        tracing::info!("Combiner warm-up took {warm_up:?}");
+        SNARK_PROVER_METRICS
+            .time_taken_merge_warm_up
+            .observe(warm_up.as_secs_f64());
+    }
+
+    let combined = combiner.combine(&artifacts).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to combine FRI proofs for batches {from_batch_number} to \
+             {to_batch_number}: {e}"
+        )
+    })?;
+
+    let pass_ms = &combined.timings_ms.unified_recursion_ms;
+    tracing::info!(
+        "Combined {} FRI proofs in {} unified proving passes ({:?} ms per pass, {} ms total)",
+        artifacts.len(),
+        pass_ms.len(),
+        pass_ms,
+        pass_ms.iter().sum::<u64>(),
+    );
+    SNARK_PROVER_METRICS
+        .merge_unified_passes
+        .set(pass_ms.len() as i64);
+
+    Ok(combined.proof)
 }
 
 pub async fn run_linking_fri_snark(
-    _binary_path: String,
     clients: Vec<Box<dyn ProofClient + Send + Sync>>,
     output_dir: String,
     trusted_setup_file: String,
@@ -174,16 +271,13 @@ pub async fn run_linking_fri_snark(
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+    let mut wrapper_source =
+        WrapperSource::Resident(Box::new(create_snark_wrapper(trusted_setup_file)?));
 
-    #[cfg(feature = "gpu")]
-    let precomputations = {
-        tracing::info!("Computing SNARK precomputations");
-        let compression_vk = compute_compression_vk(_binary_path);
-        let precomputations = gpu_create_snark_setup_data(&compression_vk, &trusted_setup_file);
-        tracing::info!("Finished computing SNARK precomputations");
-        precomputations
-    };
+    // Warm the combiner eagerly, mirroring the SNARK precomputation above: setup
+    // problems surface at startup and the first multi-proof job doesn't pay for it.
+    let mut combiner = create_combiner();
+    combiner.warm_up();
 
     SNARK_PROVER_METRICS
         .time_taken_startup
@@ -197,11 +291,9 @@ pub async fn run_linking_fri_snark(
 
         let proof_generated = run_inner(
             client.as_ref(),
-            &verifier_binary,
+            &mut wrapper_source,
+            &mut combiner,
             output_dir.clone(),
-            trusted_setup_file.clone(),
-            #[cfg(feature = "gpu")]
-            &precomputations,
             disable_zk,
             &supported_versions,
         )
@@ -231,13 +323,9 @@ pub async fn run_linking_fri_snark(
 
 pub async fn run_inner(
     client: &dyn ProofClient,
-    verifier_binary: &Vec<u32>,
+    wrapper_source: &mut WrapperSource,
+    combiner: &mut CarriedChainCombiner,
     output_dir: String,
-    trusted_setup_file: String,
-    #[cfg(feature = "gpu")] precomputations: &(
-        PlonkSnarkVerifierCircuitDeviceSetupWrapper,
-        SnarkWrapperVK,
-    ),
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
@@ -301,76 +389,75 @@ pub async fn run_inner(
         start_batch,
         end_batch,
     );
-    tracing::info!("Initializing GPU state");
-    #[cfg(feature = "gpu")]
-    let mut gpu_state_store = GpuSharedState::new(
-        verifier_binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-    );
-    #[cfg(feature = "gpu")]
-    let mut gpu_state = Some(&mut gpu_state_store);
-    #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = None;
-    tracing::info!("Finished initializing GPU state");
 
     let mut stats = SnarkProofTimeStats::new();
 
+    // A job whose proofs fail to combine would be re-picked forever, so treat merge
+    // failures as fatal rather than skipping the job.
     let proof = stats.measure_step(SnarkStage::MergeFri, || {
-        merge_fris(snark_proof_input, verifier_binary, &mut gpu_state)
-    });
+        merge_fris(snark_proof_input, combiner)
+    })?;
 
-    // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
-    #[cfg(feature = "gpu")]
-    drop(gpu_state_store);
+    // Materialize the wrapper only after the merge: the merge's GPU prover sizes its
+    // device pool to all free VRAM, so the wrapper's device-resident state must not
+    // be alive yet. In `PerJob` mode the wrapper (and any VRAM it touches) lives
+    // exactly from here until this job's proving is done; its host-side setup caches
+    // carry over from the previous job, so only the first job of the process pays the
+    // full setup derivation in the `wrapper_setup` stage.
+    let mut per_job_wrapper = None;
+    let snark_wrapper: &mut SnarkWrapper = match wrapper_source {
+        WrapperSource::Resident(wrapper) => wrapper,
+        WrapperSource::PerJob {
+            trusted_setup_file,
+            host_cache,
+        } => {
+            tracing::info!("Building per-job SNARK wrapper");
+            let cache = host_cache.take().map(|cache| *cache);
+            per_job_wrapper = Some(stats.measure_step(SnarkStage::WrapperSetup, || {
+                create_snark_wrapper_with_cache(trusted_setup_file.clone(), cache)
+            })?);
+            per_job_wrapper.as_mut().expect("wrapper was just built")
+        }
+    };
 
-    tracing::info!("Creating final proof before SNARKification");
+    tracing::info!("Wrapping and compressing FRI proof");
 
-    let final_proof = stats.measure_step(SnarkStage::FinalProof, || {
-        create_final_proofs_from_program_proof(
-            proof,
-            RecursionStrategy::UseReducedLog23Machine,
-            #[cfg(feature = "gpu")]
-            true,
-            #[cfg(not(feature = "gpu"))]
-            false,
-        )
-    });
-
-    tracing::info!("Finished creating final proof");
-    let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
-
-    serialize_to_file(&final_proof, &one_fri_path);
+    // Proving failures are fatal: silently skipping would re-pick the same job forever, and a
+    // failed attempt can leave the wrapper's cached GPU state unusable for the FRI phase of the
+    // zksync_os_prover_service service that runs FRI and SNARK on the same process.
+    let compression_proof: CompressionProof = stats
+        .measure_step(SnarkStage::FinalProof, || {
+            let risc_wrapper_proof = snark_wrapper.prove_risc_wrapper(proof)?;
+            snark_wrapper.prove_compression(risc_wrapper_proof)
+        })
+        .map_err(|e| anyhow::anyhow!("failed to wrap/compress FRI proof: {e:?}"))?;
 
     tracing::info!("SNARKifying proof");
-    let start = Instant::now();
-    match prove(
-        one_fri_path.into_os_string().into_string().unwrap(),
-        output_dir.clone(),
-        Some(trusted_setup_file.clone()),
-        false,
-        #[cfg(feature = "gpu")]
-        Some(precomputations),
-        // note that the API is use_zk, so we invert the disable_zk flag
-        !disable_zk,
-    ) {
-        Ok(()) => {
-            stats.observe_step(SnarkStage::Snark, start.elapsed());
+    // note that the API is use_zk, so we invert the disable_zk flag
+    let snark_proof: SnarkWrapperProof = stats
+        .measure_step(SnarkStage::Snark, || {
+            snark_wrapper.prove_snark(compression_proof, !disable_zk)
+        })
+        .map_err(|e| anyhow::anyhow!("failed to SNARKify proof: {e:?}"))?;
+    stats.observe_full();
+    tracing::info!("Finished generating proof, time stats: {}", stats);
 
-            stats.observe_full();
-
-            tracing::info!("Finished generating proof, time stats: {}", stats);
-        }
-        Err(e) => {
-            tracing::error!("failed to SNARKify proof: {e:?}, time stats: {}", stats);
+    // The per-job wrapper is done with the GPU; retire it but keep its host-side setup
+    // caches so the next job's wrapper build is a cheap rehydration instead of a full
+    // re-derivation.
+    if let Some(wrapper) = per_job_wrapper {
+        if let WrapperSource::PerJob { host_cache, .. } = wrapper_source {
+            *host_cache = Some(Box::new(wrapper.into_host_cache()));
         }
     }
 
-    let snark_proof: SnarkWrapperProof = deserialize_from_file(
-        Path::new(&output_dir)
-            .join("snark_proof.json")
-            .to_str()
-            .unwrap(),
-    );
+    // Persist the proof next to the other artifacts, mirroring the old flow (best effort).
+    let snark_proof_path = Path::new(&output_dir).join("snark_proof.json");
+    if let Some(path) = snark_proof_path.to_str() {
+        if let Err(e) = zkos_wrapper::serialize_to_file(&snark_proof, path) {
+            tracing::warn!("failed to persist SNARK proof to {path}: {e:?}");
+        }
+    }
 
     match client
         .submit_snark_proof(start_batch, end_batch, vk_hash.clone(), snark_proof)
@@ -419,9 +506,4 @@ pub async fn run_inner(
             Ok(false)
         }
     }
-}
-
-pub fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    serde_json::from_reader(src).unwrap()
 }
