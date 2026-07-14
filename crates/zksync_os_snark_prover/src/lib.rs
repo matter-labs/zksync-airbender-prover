@@ -7,11 +7,12 @@ use zkos_wrapper::{
     CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperProof, SnarkWrapperVK,
 };
 #[cfg(not(feature = "gpu"))]
-use zksync_airbender_cli::prover_utils::{combine_artifacts_carried_chain, CpuConfig};
+use zksync_airbender_cli::prover_utils::CpuConfig;
 #[cfg(feature = "gpu")]
-use zksync_airbender_cli::prover_utils::{combine_artifacts_carried_chain_gpu, GpuConfig};
+use zksync_airbender_cli::prover_utils::GpuConfig;
 use zksync_airbender_cli::prover_utils::{
-    ProgramProverConfig, ProofArtifact, ProofCounts, ProofTarget, ProofTimingsMs, ProverBackend,
+    CarriedChainCombiner, ProgramProverConfig, ProofArtifact, ProofCounts, ProofTarget,
+    ProofTimingsMs, ProverBackend,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
@@ -79,6 +80,31 @@ pub fn generate_verification_key(
     Ok(())
 }
 
+/// Build the FRI-proof combiner used by [`merge_fris`] for multi-proof jobs.
+///
+/// The combiner caches everything that survives across jobs — the unified recursion
+/// program's setup data and, on `gpu` builds, the GPU prover's host state (pinned host
+/// memory pools and circuit precomputations). Construct it once per process next to the
+/// SNARK wrapper; per job only the CUDA contexts and device memory pool are created and
+/// they are released when the merge finishes, so the GPU is free for the wrap phases.
+///
+/// The caches build lazily on the first multi-proof job; call
+/// [`CarriedChainCombiner::warm_up`] to pay that cost at startup instead. Note the GPU
+/// host state pins tens of gigabytes of host RAM for the lifetime of the combiner.
+pub fn create_combiner() -> CarriedChainCombiner {
+    // The security level is trusted caller input for the combine; use the level
+    // the FRI prover proves at (its `ProgramProverConfig::default()`).
+    let security_level = ProgramProverConfig::default().security_level;
+    #[cfg(feature = "gpu")]
+    {
+        CarriedChainCombiner::new_gpu(security_level, GpuConfig::default())
+    }
+    #[cfg(not(feature = "gpu"))]
+    {
+        CarriedChainCombiner::new_cpu(security_level, CpuConfig::default())
+    }
+}
+
 /// Merge the job's FRI proofs into the single unified-layer proof the SNARK wrapper expects.
 ///
 /// Multi-proof jobs are combined via airbender's combined-recursion-layers flow:
@@ -91,7 +117,10 @@ pub fn generate_verification_key(
 /// downstream verifier of the wrapped proof, not by local files. On `gpu` builds the
 /// unified-layer proving passes run on the GPU; verification and witness building stay
 /// on the host either way.
-pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<UnrolledProgramProof> {
+pub fn merge_fris(
+    snark_proof_input: SnarkProofInputs,
+    combiner: &mut CarriedChainCombiner,
+) -> anyhow::Result<UnrolledProgramProof> {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
@@ -113,9 +142,7 @@ pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<Unrolle
         fri_proofs.len()
     );
 
-    // The security level is trusted caller input for the combine; use the level
-    // the FRI prover proves at (its `ProgramProverConfig::default()`).
-    let security_level = ProgramProverConfig::default().security_level;
+    let security_level = combiner.security_level();
 
     // The sequencer sends bare proofs; wrap them into the artifact form the combine
     // expects. The program keccaks are informational metadata (the proofs are bound to
@@ -150,18 +177,36 @@ pub fn merge_fris(snark_proof_input: SnarkProofInputs) -> anyhow::Result<Unrolle
         })
         .collect();
 
-    #[cfg(feature = "gpu")]
-    let combined =
-        combine_artifacts_carried_chain_gpu(&artifacts, security_level, &GpuConfig::default());
-    #[cfg(not(feature = "gpu"))]
-    let combined =
-        combine_artifacts_carried_chain(&artifacts, security_level, &CpuConfig::default());
-    let combined = combined.map_err(|e| {
+    // First multi-proof job on a cold combiner also builds its caches; measure that
+    // separately so per-job pass timings stay comparable across jobs.
+    let warm_up_started_at = Instant::now();
+    combiner.warm_up();
+    let warm_up = warm_up_started_at.elapsed();
+    if warm_up > Duration::from_millis(100) {
+        tracing::info!("Combiner warm-up took {warm_up:?}");
+        SNARK_PROVER_METRICS
+            .time_taken_merge_warm_up
+            .observe(warm_up.as_secs_f64());
+    }
+
+    let combined = combiner.combine(&artifacts).map_err(|e| {
         anyhow::anyhow!(
             "failed to combine FRI proofs for batches {from_batch_number} to \
              {to_batch_number}: {e}"
         )
     })?;
+
+    let pass_ms = &combined.timings_ms.unified_recursion_ms;
+    tracing::info!(
+        "Combined {} FRI proofs in {} unified proving passes ({:?} ms per pass, {} ms total)",
+        artifacts.len(),
+        pass_ms.len(),
+        pass_ms,
+        pass_ms.iter().sum::<u64>(),
+    );
+    SNARK_PROVER_METRICS
+        .merge_unified_passes
+        .set(pass_ms.len() as i64);
 
     Ok(combined.proof)
 }
@@ -188,6 +233,11 @@ pub async fn run_linking_fri_snark(
 
     let mut snark_wrapper = create_snark_wrapper(trusted_setup_file)?;
 
+    // Warm the combiner eagerly, mirroring the SNARK precomputation above: setup
+    // problems surface at startup and the first multi-proof job doesn't pay for it.
+    let mut combiner = create_combiner();
+    combiner.warm_up();
+
     SNARK_PROVER_METRICS
         .time_taken_startup
         .observe(startup_started_at.elapsed().as_secs_f64());
@@ -201,6 +251,7 @@ pub async fn run_linking_fri_snark(
         let proof_generated = run_inner(
             client.as_ref(),
             &mut snark_wrapper,
+            &mut combiner,
             output_dir.clone(),
             disable_zk,
             &supported_versions,
@@ -232,6 +283,7 @@ pub async fn run_linking_fri_snark(
 pub async fn run_inner(
     client: &dyn ProofClient,
     snark_wrapper: &mut SnarkWrapper,
+    combiner: &mut CarriedChainCombiner,
     output_dir: String,
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
@@ -301,7 +353,9 @@ pub async fn run_inner(
 
     // A job whose proofs fail to combine would be re-picked forever, so treat merge
     // failures as fatal rather than skipping the job.
-    let proof = stats.measure_step(SnarkStage::MergeFri, || merge_fris(snark_proof_input))?;
+    let proof = stats.measure_step(SnarkStage::MergeFri, || {
+        merge_fris(snark_proof_input, combiner)
+    })?;
 
     tracing::info!("Wrapping and compressing FRI proof");
 

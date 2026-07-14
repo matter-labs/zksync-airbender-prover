@@ -124,6 +124,13 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         args.trusted_setup_file.clone(),
     )?);
 
+    // The FRI-proof combiner likewise caches its setup data (and, on `gpu` builds, the
+    // GPU prover's host state — pinned host RAM only, no VRAM) across jobs and across
+    // the FRI/SNARK phase alternation. Its caches build lazily on the first multi-proof
+    // SNARK job rather than at startup, so a service that never sees multi-proof jobs
+    // doesn't pin tens of gigabytes of host RAM for nothing.
+    let combiner = RefCell::new(zksync_os_snark_prover::create_combiner());
+
     tracing::info!("Starting Zksync OS Prover Service");
 
     let mut snark_proof_count = 0;
@@ -184,6 +191,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 zksync_os_snark_prover::run_inner(
                     client.as_ref(),
                     &mut snark_wrapper.borrow_mut(),
+                    &mut combiner.borrow_mut(),
                     args.output_dir.clone(),
                     args.disable_zk,
                     &supported_versions,

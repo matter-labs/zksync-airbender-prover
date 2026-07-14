@@ -38,7 +38,14 @@ pub struct SnarkProverMetrics {
     pub time_taken_snark: Histogram,
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
     pub time_taken_full: Histogram,
+    /// Time spent building the merge combiner's caches (unified-level setup and, on
+    /// GPU builds, the prover host state). Observed only when a merge found them cold,
+    /// normally once per process on the first multi-proof job.
+    #[metrics(buckets = vise::Buckets::linear(10.0..=300.0, 30.0), unit = vise::Unit::Seconds)]
+    pub time_taken_merge_warm_up: Histogram,
     pub fri_proofs_merged: Gauge,
+    /// Number of unified proving passes (combined pass + shrink passes) of the last merge.
+    pub merge_unified_passes: Gauge,
     pub latest_proven_batch: Gauge,
     /// Number of timeout errors when communicating with sequencer
     pub timeout_errors: Counter,
