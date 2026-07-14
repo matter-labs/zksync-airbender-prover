@@ -102,9 +102,9 @@ const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
         "0x2215af6cf294eed41e66f7052ab776fd0f0222b08841523fc85e442a1ce0e085",
     ),
-    airbender_version: AirbenderVersion("4e8701d5"),
+    airbender_version: AirbenderVersion("67bffee0"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
-    zkos_wrapper: ZkOsWrapperVersion("0a833652"),
+    zkos_wrapper: ZkOsWrapperVersion("01ba3676"),
     bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
 };
 
