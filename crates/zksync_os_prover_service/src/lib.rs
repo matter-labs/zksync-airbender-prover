@@ -118,11 +118,17 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    // The SNARK wrapper caches its setup chain (VKs, precomputations) across jobs, so it is
-    // created once. It is kept in a RefCell so the retry closure below can borrow it mutably.
-    let snark_wrapper = RefCell::new(zksync_os_snark_prover::create_snark_wrapper(
-        args.trusted_setup_file.clone(),
-    )?);
+    // The SNARK wrapper's setup chain includes several GiB of device-resident state,
+    // while the FRI prover and the FRI-proof combiner each size their device pool to
+    // "all free VRAM" and need essentially the whole card (on prod-shaped L4s a
+    // resident wrapper starves the FRI prover into OOM). So the wrapper is built per
+    // SNARK job — after the job's proofs are merged — and dropped with the job,
+    // mirroring how `fri_prover` is dropped before SNARKing. The rebuild cost is
+    // reported as the `wrapper_setup` stage. It is kept in a RefCell so the retry
+    // closure below can borrow it mutably.
+    let wrapper_source = RefCell::new(zksync_os_snark_prover::WrapperSource::PerJob {
+        trusted_setup_file: args.trusted_setup_file.clone(),
+    });
 
     // The FRI-proof combiner likewise caches its setup data (and, on `gpu` builds, the
     // GPU prover's host state — pinned host RAM only, no VRAM) across jobs and across
@@ -190,7 +196,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             || async {
                 zksync_os_snark_prover::run_inner(
                     client.as_ref(),
-                    &mut snark_wrapper.borrow_mut(),
+                    &mut wrapper_source.borrow_mut(),
                     &mut combiner.borrow_mut(),
                     args.output_dir.clone(),
                     args.disable_zk,
