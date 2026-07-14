@@ -26,6 +26,24 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
+/// Where [`run_inner`] gets its SNARK wrapper from.
+///
+/// The wrapper's setup chain includes several GiB of device-resident state (phase 1/2
+/// GPU setups and the phase-3 device setup), while the FRI prover and the FRI-proof
+/// combiner each size their device pools to "all free VRAM" and need essentially the
+/// whole card (prod FRI provers run on a dedicated L4). A resident wrapper therefore
+/// starves them when everything shares one GPU.
+pub enum WrapperSource {
+    /// Long-lived wrapper reused across jobs. For deployments where the wrapper does
+    /// not compete for the GPU (the standalone SNARK prover binary).
+    Resident(Box<SnarkWrapper>),
+    /// Create the wrapper after a job's proofs are merged and drop it when the job
+    /// finishes, so FRI proving and the merge always see a clean GPU (the combined
+    /// `zksync-os-prover-service`). Costs one setup-chain rebuild per SNARK job,
+    /// reported as the `wrapper_setup` stage.
+    PerJob { trusted_setup_file: String },
+}
+
 /// Build the SNARK wrapper session used for proving and VK generation.
 ///
 /// The wrapper is constructed without an explicit binary: the verification keys bind the
@@ -231,7 +249,8 @@ pub async fn run_linking_fri_snark(
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    let mut snark_wrapper = create_snark_wrapper(trusted_setup_file)?;
+    let mut wrapper_source =
+        WrapperSource::Resident(Box::new(create_snark_wrapper(trusted_setup_file)?));
 
     // Warm the combiner eagerly, mirroring the SNARK precomputation above: setup
     // problems surface at startup and the first multi-proof job doesn't pay for it.
@@ -250,7 +269,7 @@ pub async fn run_linking_fri_snark(
 
         let proof_generated = run_inner(
             client.as_ref(),
-            &mut snark_wrapper,
+            &mut wrapper_source,
             &mut combiner,
             output_dir.clone(),
             disable_zk,
@@ -282,7 +301,7 @@ pub async fn run_linking_fri_snark(
 
 pub async fn run_inner(
     client: &dyn ProofClient,
-    snark_wrapper: &mut SnarkWrapper,
+    wrapper_source: &mut WrapperSource,
     combiner: &mut CarriedChainCombiner,
     output_dir: String,
     disable_zk: bool,
@@ -356,6 +375,22 @@ pub async fn run_inner(
     let proof = stats.measure_step(SnarkStage::MergeFri, || {
         merge_fris(snark_proof_input, combiner)
     })?;
+
+    // Materialize the wrapper only after the merge: the merge's GPU prover sizes its
+    // device pool to all free VRAM, so the wrapper's device-resident setups must not
+    // be alive yet. In `PerJob` mode the wrapper (and its VRAM) lives exactly from
+    // here until this job is done.
+    let mut per_job_wrapper;
+    let snark_wrapper: &mut SnarkWrapper = match wrapper_source {
+        WrapperSource::Resident(wrapper) => wrapper,
+        WrapperSource::PerJob { trusted_setup_file } => {
+            tracing::info!("Building per-job SNARK wrapper (device setup chain)");
+            per_job_wrapper = stats.measure_step(SnarkStage::WrapperSetup, || {
+                create_snark_wrapper(trusted_setup_file.clone())
+            })?;
+            &mut per_job_wrapper
+        }
+    };
 
     tracing::info!("Wrapping and compressing FRI proof");
 
