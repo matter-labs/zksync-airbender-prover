@@ -4,7 +4,7 @@ use crate::metrics::Method;
 use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
     FailedFriProofPayload, FriJobInputs, GetSnarkProofPayload, NextFriProverJobPayload,
-    PeekableProofClient, ProofClient, SnarkProofInputs, SubmitFriProofPayload,
+    PeekableProofClient, PickJobRequest, ProofClient, SnarkProofInputs, SubmitFriProofPayload,
     SubmitSnarkProofPayload,
 };
 use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
@@ -24,6 +24,9 @@ pub struct SequencerProofClient {
     client: reqwest::Client,
     endpoint: Url,
     prover_name: String,
+    /// VK hashes this prover will accept jobs for; echoed to the sequencer on
+    /// every `pick_*_job` so it can keep a live view of VK hashes provers support.
+    supported_vk_hashes: Vec<String>,
 }
 
 impl SequencerProofClient {
@@ -32,6 +35,7 @@ impl SequencerProofClient {
     /// # Arguments
     /// * `endpoint` - The sequencer endpoint (URL + optional credentials)
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
+    /// * `supported_vk_hashes` - VK hashes this prover can prove against
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     ///
     /// # Errors
@@ -39,6 +43,7 @@ impl SequencerProofClient {
     pub fn new(
         endpoint: SequencerEndpoint,
         prover_name: String,
+        supported_vk_hashes: Vec<String>,
         timeout: Option<Duration>,
     ) -> anyhow::Result<Self> {
         let mut headers = HeaderMap::new();
@@ -70,6 +75,7 @@ impl SequencerProofClient {
             client,
             endpoint: endpoint.url,
             prover_name,
+            supported_vk_hashes,
         })
     }
 
@@ -78,6 +84,7 @@ impl SequencerProofClient {
     /// # Arguments
     /// * `endpoints` - A vector of sequencer endpoints
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
+    /// * `supported_vk_hashes` - VK hashes this prover can prove against
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     ///
     /// # Errors
@@ -86,6 +93,7 @@ impl SequencerProofClient {
     pub fn new_clients(
         endpoints: Vec<SequencerEndpoint>,
         prover_name: String,
+        supported_vk_hashes: Vec<String>,
         timeout: Option<Duration>,
     ) -> anyhow::Result<Vec<Box<dyn ProofClient + Send + Sync>>> {
         if endpoints.is_empty() {
@@ -97,10 +105,15 @@ impl SequencerProofClient {
             .enumerate()
             .map(|(i, endpoint)| {
                 let url = endpoint.url.clone();
-                let client = SequencerProofClient::new(endpoint, prover_name.clone(), timeout)
-                    .with_context(|| {
-                        format!("Failed to create sequencer client #{i} at url {url:?}")
-                    })?;
+                let client = SequencerProofClient::new(
+                    endpoint,
+                    prover_name.clone(),
+                    supported_vk_hashes.clone(),
+                    timeout,
+                )
+                .with_context(|| {
+                    format!("Failed to create sequencer client #{i} at url {url:?}")
+                })?;
 
                 Ok(Box::new(client) as Box<dyn ProofClient + Send + Sync>)
             })
@@ -158,6 +171,9 @@ impl ProofClient for SequencerProofClient {
         let resp = self
             .client
             .post(url.clone())
+            .json(&PickJobRequest {
+                supported_vk_hashes: self.supported_vk_hashes.clone(),
+            })
             .send()
             .await
             .context("Pick Fri Job request failed")?;
@@ -230,6 +246,9 @@ impl ProofClient for SequencerProofClient {
         let resp = self
             .client
             .post(url.clone())
+            .json(&PickJobRequest {
+                supported_vk_hashes: self.supported_vk_hashes.clone(),
+            })
             .send()
             .await
             .context("Pick Snark Job request failed")?;
@@ -375,7 +394,7 @@ mod tests {
     fn test_client_strips_credentials() {
         let endpoint = SequencerEndpoint::parse("http://user:password123@localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None)
+        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), vec![], None)
             .expect("failed to create client");
 
         // URL should be clean (no credentials)
@@ -389,7 +408,7 @@ mod tests {
     fn test_client_without_credentials() {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None)
+        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), vec![], None)
             .expect("failed to create client");
 
         let url = client.sequencer_url();

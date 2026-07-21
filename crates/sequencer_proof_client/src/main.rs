@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{fmt, EnvFilter};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
@@ -47,6 +48,7 @@ impl Cli {
                 .clone()
                 .expect("called sequencer_client() before init()"),
             "cli_client".to_string(),
+            SupportedProtocolVersions::default().vk_hashes(),
             None,
         )
     }
