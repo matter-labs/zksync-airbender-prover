@@ -27,6 +27,7 @@ proof-compression = { workspace = true, optional = true }
 
 # external dependencies
 anyhow.workspace = true
+bincode.workspace = true
 clap.workspace = true
 reqwest.workspace = true
 serde.workspace = true

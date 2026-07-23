@@ -5131,6 +5131,7 @@ name = "zksync_os_snark_prover"
 version = "0.8.2"
 dependencies = [
  "anyhow",
+ "bincode 2.0.1",
  "clap",
  "cli",
  "execution_utils",
