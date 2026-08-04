@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use protocol_version::SupportedProtocolVersions;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use zksync_os_snark_prover::{init_tracing, metrics, run_linking_fri_snark};
@@ -109,9 +110,14 @@ fn main() -> anyhow::Result<()> {
                     sequencer_urls.len(),
                     sequencer_urls
                 );
-                let clients =
-                    SequencerProofClient::new_clients(sequencer_urls, prover_name, Some(timeout))
-                        .expect("failed to create sequencer proof clients");
+                let supported_versions = SupportedProtocolVersions::default();
+                let clients = SequencerProofClient::new_clients(
+                    sequencer_urls,
+                    prover_name,
+                    Some(timeout),
+                    supported_versions.vk_hashes(),
+                )
+                .expect("failed to create sequencer proof clients");
 
                 tracing::info!(
                     "Starting zksync_os_snark_prover with request timeout of {}s",

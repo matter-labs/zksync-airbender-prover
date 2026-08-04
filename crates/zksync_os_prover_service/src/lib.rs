@@ -102,9 +102,16 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         args.sequencer_urls.len(),
         args.sequencer_urls
     );
-    let clients =
-        SequencerProofClient::new_clients(args.sequencer_urls, "prover_service".to_string(), None)
-            .context("failed to create sequencer proof clients")?;
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::info!("{:#?}", supported_versions);
+
+    let clients = SequencerProofClient::new_clients(
+        args.sequencer_urls,
+        "prover_service".to_string(),
+        None,
+        supported_versions.vk_hashes(),
+    )
+    .context("failed to create sequencer proof clients")?;
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -114,9 +121,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let binary_path = args
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
-
-    let supported_versions = SupportedProtocolVersions::default();
-    tracing::info!("{:#?}", supported_versions);
 
     // The FRI prover and the FRI-proof combiner each size their device pool to "all
     // free VRAM" and need essentially the whole card (on prod-shaped L4s a resident
