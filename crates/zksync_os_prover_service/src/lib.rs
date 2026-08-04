@@ -23,6 +23,8 @@ use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERI
 use zksync_os_snark_prover::compute_compression_vk;
 use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
 
+pub mod metrics;
+
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
@@ -73,6 +75,9 @@ pub struct Args {
     /// Path to the output file for FRI proofs
     #[arg(short, long)]
     pub fri_path: Option<PathBuf>,
+    /// Port to run the Prometheus metrics server on
+    #[arg(long, default_value = "3124")]
+    pub prometheus_port: u16,
     /// Disable ZK for SNARK proofs
     #[arg(long, default_value_t = false)]
     pub disable_zk: bool,
