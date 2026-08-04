@@ -100,7 +100,7 @@ const V7: ProtocolVersion = ProtocolVersion {
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
 const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0x2215af6cf294eed41e66f7052ab776fd0f0222b08841523fc85e442a1ce0e085",
+        "0x3e7784b0fdb09035a677ae80568d34fdb1f1ec6ac65bba5192cd977a4f0e7609",
     ),
     airbender_version: AirbenderVersion("3f8f8e54"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
