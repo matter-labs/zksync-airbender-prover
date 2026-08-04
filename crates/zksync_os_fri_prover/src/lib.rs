@@ -7,7 +7,7 @@ use anyhow::Context as _;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
-use protocol_version::SupportedProtocolVersions;
+use protocol_version::{ProgramCommitment, SupportedProtocolVersions};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
     serialize_to_file, ProgramProver, ProgramProverConfig, ProgramSource, ProofTarget,
@@ -97,6 +97,37 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     ProgramProver::new(source, config).map_err(|e| anyhow::anyhow!("failed to create prover: {e}"))
 }
 
+/// Compute the chain commitment of the app program at `binary_path` (`.text` sibling
+/// derived like [`create_prover`] does).
+///
+/// This is the blake2s recursion-chain value — the base program's `end_params` folded
+/// with the unrolled recursion verifier's — that proofs of this program expose in their
+/// final registers 18..=25 and that the settlement side checks the SNARK public input
+/// against. Since V8 the SNARK VK no longer covers the app binary, so the
+/// (vk_hash, program commitment) pair is what identifies a protocol version end to end;
+/// comparing this value against the [`SupportedProtocolVersions`] table catches a
+/// "right prover stack, wrong binary" deployment before any proving starts.
+///
+/// Derived with zkos-wrapper's own `BinaryCommitment` so the value is byte-identical to
+/// what the wrapper chain enforces. Note this recomputes the program's setup caps
+/// (the prover's own copy in [`create_prover`] is not accessible), which takes on the
+/// order of a minute — call it once at startup.
+pub fn compute_program_commitment(binary_path: &Path) -> anyhow::Result<ProgramCommitment> {
+    let source = ProgramSource::from_paths(
+        binary_path
+            .to_str()
+            .with_context(|| format!("non-UTF8 binary path {binary_path:?}"))?
+            .to_string(),
+        None,
+    );
+    let bin = std::fs::read(&source.bin_path)
+        .with_context(|| format!("failed to read program binary {}", source.bin_path))?;
+    let text = std::fs::read(&source.text_path)
+        .with_context(|| format!("failed to read program text section {}", source.text_path))?;
+    let commitment = zkos_wrapper::circuits::BinaryCommitment::from_base_binary(&bin, &text);
+    Ok(ProgramCommitment(commitment.aux_params))
+}
+
 pub fn create_proof(
     prover: &ProgramProver,
     batch_id: u64,
@@ -137,6 +168,19 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let binary_path = args
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
+
+    // Fail fast on a binary none of the supported versions proves: such a deployment
+    // could only produce proofs the settlement side rejects (the SNARK VK does not
+    // cover the app binary; this commitment, carried through the recursion chain, is
+    // what gets checked downstream).
+    let program_commitment = compute_program_commitment(&binary_path)?;
+    tracing::info!("App program commitment: {program_commitment}");
+    anyhow::ensure!(
+        supported_versions.supports_program(&program_commitment),
+        "program {binary_path:?} (commitment {program_commitment}) is not proven by any \
+         supported protocol version"
+    );
+
     let prover = create_prover(&binary_path)?;
 
     tracing::info!(
@@ -161,6 +205,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             &prover,
             args.path.clone(),
             &supported_versions,
+            &program_commitment,
         )
         .await
         .expect("Failed to run FRI prover");
@@ -204,6 +249,7 @@ pub async fn run_inner(
     prover: &ProgramProver,
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
+    program_commitment: &ProgramCommitment,
 ) -> anyhow::Result<bool> {
     let FriJobInputs {
         batch_number,
@@ -238,6 +284,22 @@ pub async fn run_inner(
                     fri_job_input.vk_hash,
                     fri_job_input.batch_number,
                     client.sequencer_url()
+                );
+                return Ok(false);
+            }
+            // The job's version must prove the program this prover has loaded — a
+            // mismatched proof would only be rejected downstream, after the GPU time
+            // is already spent.
+            let expected = supported_versions.program_commitment_for(&fri_job_input.vk_hash);
+            if expected != Some(*program_commitment) {
+                tracing::error!(
+                    "Protocol version with vk_hash {} for batch number {} from sequencer {} \
+                     proves a different app program (version's commitment: {}, loaded binary: \
+                     {program_commitment})",
+                    fri_job_input.vk_hash,
+                    fri_job_input.batch_number,
+                    client.sequencer_url(),
+                    expected.map_or_else(|| "none".to_string(), |c| c.to_string()),
                 );
                 return Ok(false);
             }

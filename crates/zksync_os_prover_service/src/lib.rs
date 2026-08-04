@@ -127,6 +127,16 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
 
+    // Fail fast on a binary none of the supported versions proves — its proofs could
+    // only be rejected downstream (the SNARK VK does not cover the app binary).
+    let program_commitment = zksync_os_fri_prover::compute_program_commitment(&binary_path)?;
+    tracing::info!("App program commitment: {program_commitment}");
+    anyhow::ensure!(
+        supported_versions.supports_program(&program_commitment),
+        "program {binary_path:?} (commitment {program_commitment}) is not proven by any \
+         supported protocol version"
+    );
+
     // The FRI prover and the FRI-proof combiner each size their device pool to "all
     // free VRAM" and need essentially the whole card (on prod-shaped L4s a resident
     // SNARK wrapper starves the FRI prover into OOM). So the wrapper is built per
@@ -169,6 +179,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 &fri_prover,
                 args.fri_path.clone(),
                 &supported_versions,
+                &program_commitment,
             )
             .await
             .expect("Failed to run FRI prover");

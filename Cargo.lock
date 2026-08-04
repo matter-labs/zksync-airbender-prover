@@ -5634,6 +5634,7 @@ dependencies = [
  "url",
  "vise",
  "vise-exporter",
+ "zkos-wrapper",
  "zksync_sequencer_proof_client",
 ]
 

@@ -1,4 +1,4 @@
-use protocol_version::SupportedProtocolVersions;
+use protocol_version::{ProgramCommitment, SupportedProtocolVersions};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
@@ -89,6 +89,23 @@ pub fn create_snark_wrapper_with_cache(
     }
 
     Ok(wrapper)
+}
+
+/// The app-program chain commitment a FRI proof carries in its final registers 18..=25.
+///
+/// This is the value the settlement side compares the SNARK public input against (the
+/// SNARK VK itself does not cover the app binary), so checking it against the protocol
+/// version's recorded commitment up front rejects proofs of the wrong program before
+/// the wrap chain spends GPU time on them. Combined (multi-batch) proofs carry the same
+/// shared chain in the same registers. Note the proof's `recursion_chain_hash` field is
+/// NOT this value — that is the prover-internal recursion-layer chain, which varies
+/// with the number of unified passes.
+fn carried_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment {
+    let mut words = [0u32; 8];
+    for (i, word) in words.iter_mut().enumerate() {
+        *word = proof.register_final_values[18 + i].value;
+    }
+    ProgramCommitment(words)
 }
 
 /// Build the FRI-proof combiner used by [`merge_fris`] for multi-proof jobs.
@@ -318,6 +335,28 @@ pub async fn run_inner(
                     client.sequencer_url()
                 );
                 return Ok(false);
+            }
+            // Every proof of the job must attest the app program its protocol version
+            // proves; a wrong-program proof would survive the whole wrap chain (the
+            // SNARK VK does not cover the app binary) only to be rejected downstream.
+            if let Some(expected) =
+                supported_protocol_versions.program_commitment_for(&snark_proof_input.vk_hash)
+            {
+                for (i, proof) in snark_proof_input.fri_proofs.iter().enumerate() {
+                    let carried = carried_program_commitment(proof);
+                    if carried != expected {
+                        tracing::error!(
+                            "FRI proof {i} of batches [{} to {}] from sequencer {} carries \
+                             program commitment {carried}, but protocol version {} proves \
+                             {expected}; skipping",
+                            snark_proof_input.from_batch_number.0,
+                            snark_proof_input.to_batch_number.0,
+                            client.sequencer_url(),
+                            snark_proof_input.vk_hash,
+                        );
+                        return Ok(false);
+                    }
+                }
             }
             snark_proof_input
         }
