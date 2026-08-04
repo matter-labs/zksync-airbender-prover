@@ -5653,6 +5653,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "vise",
+ "vise-exporter",
  "zksync_os_fri_prover",
  "zksync_os_snark_prover",
  "zksync_sequencer_proof_client",

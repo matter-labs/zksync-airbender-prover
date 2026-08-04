@@ -14,6 +14,8 @@ use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
 
+pub mod metrics;
+
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
 #[command(name = "Zksync OS Prover")]
@@ -61,6 +63,9 @@ pub struct Args {
     /// Path to the output file for FRI proofs
     #[arg(short, long)]
     pub fri_path: Option<PathBuf>,
+    /// Port to run the Prometheus metrics server on
+    #[arg(long, default_value = "3124")]
+    pub prometheus_port: u16,
     /// Disable ZK for SNARK proofs
     #[arg(long, default_value_t = false)]
     pub disable_zk: bool,
