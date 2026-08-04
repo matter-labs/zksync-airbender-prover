@@ -61,18 +61,20 @@ pub fn create_snark_wrapper(trusted_setup_file: String) -> anyhow::Result<SnarkW
 
 /// Like [`create_snark_wrapper`], but adopt the setup caches of a retired wrapper
 /// (see [`SnarkWrapper::into_host_cache`]) so the chain derivation is skipped.
+///
+/// The cache carries the retired session's whole configuration, including its trusted
+/// setup path, so `trusted_setup_file` only applies to cache-less (first) builds.
 pub fn create_snark_wrapper_with_cache(
     trusted_setup_file: String,
     host_cache: Option<SnarkWrapperHostCache>,
 ) -> anyhow::Result<SnarkWrapper> {
-    let config = SnarkWrapperConfig {
-        trusted_setup: Some(trusted_setup_file.into()),
-        ..Default::default()
-    };
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
     let mut wrapper = match host_cache {
-        Some(cache) => SnarkWrapper::new_with_host_cache(config, cache)?,
-        None => SnarkWrapper::new(config)?,
+        Some(cache) => SnarkWrapper::from_host_cache(cache)?,
+        None => SnarkWrapper::new(SnarkWrapperConfig {
+            trusted_setup: Some(trusted_setup_file.into()),
+            ..Default::default()
+        })?,
     };
 
     // Mirror the old eager GPU precomputation: derive the full VK/setup chain up front so
