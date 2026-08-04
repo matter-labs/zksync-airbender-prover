@@ -3,9 +3,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
-use zksync_os_snark_prover::{
-    generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
-};
+use zksync_os_snark_prover::{init_tracing, metrics, run_linking_fri_snark};
 use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
@@ -26,16 +24,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    // TODO: redo this command, naming is confusing
-    /// Generate the snark verification keys
-    GenerateKeys {
-        #[clap(flatten)]
-        setup: SetupOptions,
-        /// Path to the output verification key file
-        #[arg(long)]
-        vk_verification_key_file: Option<String>,
-    },
-
     RunProver {
         /// Sequencer URL(s) to poll for tasks. Comma-separated for round-robin.
         ///
@@ -78,9 +66,9 @@ fn main() -> anyhow::Result<()> {
     init_tracing();
     let cli = Cli::parse();
 
-    // Circuit synthesis (key generation and the SNARK wrapper chain) exhausts the default
-    // stack, and the main thread's size is fixed by the OS. Give every thread the runtime
-    // spawns (workers and blocking threads alike) an explicit stack size: it only limits
+    // Circuit synthesis in the SNARK wrapper chain exhausts the default stack, and the
+    // main thread's size is fixed by the OS. Give every thread the runtime spawns
+    // (workers and blocking threads alike) an explicit stack size: it only limits
     // how far the stack may grow, nothing is allocated up front. RUST_MIN_STACK, when set,
     // is used as-is (so constrained environments can also lower it); otherwise 256 MiB.
     let stack_size = std::env::var("RUST_MIN_STACK")
@@ -94,27 +82,6 @@ fn main() -> anyhow::Result<()> {
         .expect("failed to build tokio runtime");
 
     match cli.command {
-        Commands::GenerateKeys {
-            setup:
-                SetupOptions {
-                    output_dir,
-                    trusted_setup_file,
-                },
-            vk_verification_key_file,
-        } => {
-            // Run synthesis on a runtime-managed thread rather than the OS-sized main one.
-            runtime.block_on(async move {
-                tokio::task::spawn_blocking(move || {
-                    generate_verification_key(
-                        output_dir,
-                        trusted_setup_file,
-                        vk_verification_key_file,
-                    )
-                })
-                .await
-                .expect("key generation task panicked")
-            })?;
-        }
         Commands::RunProver {
             sequencer_urls,
             setup:

@@ -1,11 +1,9 @@
-use anyhow::Context as _;
 use protocol_version::SupportedProtocolVersions;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{
     CompressionProof, SnarkWrapper, SnarkWrapperConfig, SnarkWrapperHostCache, SnarkWrapperProof,
-    SnarkWrapperVK,
 };
 #[cfg(not(feature = "gpu"))]
 use zksync_airbender_cli::prover_utils::CpuConfig;
@@ -89,35 +87,6 @@ pub fn create_snark_wrapper_with_cache(
     }
 
     Ok(wrapper)
-}
-
-pub fn generate_verification_key(
-    output_dir: String,
-    trusted_setup_file: String,
-    vk_verification_key_file: Option<String>,
-) -> anyhow::Result<()> {
-    zkos_wrapper::interface::cmd_generate_vk(
-        output_dir.clone().into(),
-        None,
-        None,
-        Some(trusted_setup_file.into()),
-        None,
-    )?;
-
-    if let Some(vk_file) = vk_verification_key_file {
-        let snark_vk_path = Path::new(&output_dir).join("snark_vk.json");
-        let vk: SnarkWrapperVK = zkos_wrapper::deserialize_from_file(
-            snark_vk_path
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("non-UTF8 output dir {output_dir:?}"))?,
-        )?;
-        let vk_hash = zkos_wrapper::calculate_verification_key_hash(vk);
-        std::fs::write(&vk_file, format!("{vk_hash:?}"))
-            .with_context(|| format!("failed to write verification key hash to {vk_file}"))?;
-    }
-
-    tracing::info!("Verification keys generated successfully");
-    Ok(())
 }
 
 /// Build the FRI-proof combiner used by [`merge_fris`] for multi-proof jobs.
