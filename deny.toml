@@ -13,6 +13,12 @@ ignore = [
     "RUSTSEC-2024-0388", # `derivative` is unmaintained, crypto dependenicies (boojum, circuit_encodings and others) rely on it
     "RUSTSEC-2024-0436", # `paste` is an unmaintained dependency of various crates (like alloy-primitives, sqlx-core)
     "RUSTSEC-2025-0137", # unsoundness in reciprocal_mg10 - not used by our code
+    # `ruint` shift-operation overflow flags. Pulled in only by `risc_v_simulator` (airbender),
+    # which uses `U256`/`U512` add/sub/mul and `from_limbs` - no shift or string-formatting APIs,
+    # so the affected code paths are unreachable for us. The fix (ruint >= 1.20.0) requires
+    # rustc 1.90, and boojum 0.32.5 does not compile on the 1.90 nightlies, so we cannot bump
+    # the toolchain yet. Remove once boojum/zkos-wrapper allow a newer toolchain.
+    "RUSTSEC-2026-0220",
 ]
 
 [licenses]
