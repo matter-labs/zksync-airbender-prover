@@ -49,6 +49,7 @@ FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY multiblock_batch.bin /multiblock_batch.bin
+COPY multiblock_batch.text /multiblock_batch.text
 COPY --from=builder /usr/src/zksync/target/release/zksync_os_fri_prover /usr/bin/
 
 ENTRYPOINT ["zksync_os_fri_prover"]

@@ -18,11 +18,7 @@ zksync_airbender_execution_utils.workspace = true
 # zkos-wrapper dependencies
 zkos_wrapper.workspace = true
 
-# zksync-protocol dependencies
-circuit_definitions.workspace = true
-
 # zksync-crypto dependencies
-bellman.workspace = true
 crypto_codegen.workspace = true
 
 async-trait.workspace = true

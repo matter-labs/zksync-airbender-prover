@@ -55,6 +55,7 @@ RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /
 RUN chmod +x /entrypoint.sh
 
 COPY multiblock_batch.bin /multiblock_batch.bin
+COPY multiblock_batch.text /multiblock_batch.text
 COPY --from=builder /usr/src/zksync/target/release/zksync-os-prover-service /usr/bin/zksync-airbender-prover
 
 ENTRYPOINT ["/entrypoint.sh"]
