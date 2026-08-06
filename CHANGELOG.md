@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.8.2...v0.9.0) (2026-08-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* update prover stack for v8  ([#137](https://github.com/matter-labs/zksync-airbender-prover/issues/137))
+
+### Features
+
+* update prover stack for v8  ([#137](https://github.com/matter-labs/zksync-airbender-prover/issues/137)) ([f6d4c99](https://github.com/matter-labs/zksync-airbender-prover/commit/f6d4c996c6394848476c34508187521a2879e27c))
+
 ## [0.8.2](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.8.1...v0.8.2) (2026-07-22)
 
 
