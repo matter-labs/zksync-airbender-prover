@@ -20,6 +20,31 @@ struct ProtocolVersion {
     /// NOTE: in the future we may want to support multiple binaries (such as debug mode)
     /// NOTE2: this can be inferred from zksync_os_version, but we keep it here for easier cross-checking
     bin_md5sum: BinMd5Sum,
+    /// Chain commitment of the app program this version proves (see [`ProgramCommitment`]).
+    ///
+    /// Since V8 the SNARK VK is app-independent, so `vk_hash` alone no longer identifies
+    /// the app binary; the (vk_hash, program_commitment) pair does. `None` for pre-V8
+    /// versions, whose VK had the binary commitment baked into the circuit.
+    program_commitment: Option<ProgramCommitment>,
+}
+
+/// The blake2s recursion-chain commitment binding a protocol version to its app program
+/// (`multiblock_batch.bin`/`.text`): the base program's `end_params` folded with the
+/// unrolled recursion verifier's, exactly the value the unified recursion verifier
+/// exposes in its final registers 18..=25 and the settlement side checks the SNARK
+/// public input against. Computed with zkos-wrapper's `BinaryCommitment::from_base_binary`
+/// (`aux_params`); see `zksync_os_fri_prover::compute_program_commitment`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProgramCommitment(pub [u32; 8]);
+
+impl std::fmt::Display for ProgramCommitment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "0x")?;
+        for word in self.0 {
+            write!(f, "{word:08x}")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -47,6 +72,7 @@ const V3: ProtocolVersion = ProtocolVersion {
     zksync_os_version: ZkSyncOSVersion("v0.0.26"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.0"),
     bin_md5sum: BinMd5Sum("fd9fd6ebfcfe7b3d1557e8a8b8563dd6"),
+    program_commitment: None,
 };
 
 /// Corresponds to server's execution_version 4 (or v1.2)
@@ -59,6 +85,7 @@ const V4: ProtocolVersion = ProtocolVersion {
     zksync_os_version: ZkSyncOSVersion("v0.1.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.3"),
     bin_md5sum: BinMd5Sum("a3fffd4f2e14e7171c2207e470316e5f"),
+    program_commitment: None,
 };
 
 /// Corresponds to server's execution_version 5 (or v1.3)
@@ -71,6 +98,7 @@ const V5: ProtocolVersion = ProtocolVersion {
     zksync_os_version: ZkSyncOSVersion("v0.2.4"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.3"),
     bin_md5sum: BinMd5Sum("a2421384eb817ba2649f1438dc321d54"),
+    program_commitment: None,
 };
 
 /// Corresponds to server's execution_version 6 (or v1.3.1)
@@ -83,6 +111,7 @@ const V6: ProtocolVersion = ProtocolVersion {
     zksync_os_version: ZkSyncOSVersion("v0.2.5"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.4"),
     bin_md5sum: BinMd5Sum("e77ced130723f3e52099658d589a8454"),
+    program_commitment: None,
 };
 
 /// Corresponds to server's execution_version 7
@@ -95,6 +124,7 @@ const V7: ProtocolVersion = ProtocolVersion {
     zksync_os_version: ZkSyncOSVersion("v0.3.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.5.5"),
     bin_md5sum: BinMd5Sum("99d1618fdf63d80c4a6ed41cf21ed4d6"),
+    program_commitment: None,
 };
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
@@ -106,6 +136,10 @@ const V8: ProtocolVersion = ProtocolVersion {
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.1"),
     bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
+    program_commitment: Some(ProgramCommitment([
+        0x925e5e40, 0xf526b71c, 0x1ee4f8b1, 0xea01856f, 0xf2f836fb, 0x19b96ed6, 0xb36a9404,
+        0x248d5773,
+    ])),
 };
 
 /// Represents the set of supported protocol versions by this prover implementation.
@@ -132,5 +166,22 @@ impl SupportedProtocolVersions {
             .iter()
             .map(|version| version.vk_hash.0.to_string())
             .collect()
+    }
+
+    /// Returns the app-program commitment recorded for the version with this VK hash.
+    ///
+    /// `None` if the version is not supported, or predates program commitments (pre-V8).
+    pub fn program_commitment_for(&self, vk_hash: &str) -> Option<ProgramCommitment> {
+        self.versions
+            .iter()
+            .find(|v| v.vk_hash.0 == vk_hash)
+            .and_then(|v| v.program_commitment)
+    }
+
+    /// Checks whether some supported version proves the app program with this commitment.
+    pub fn supports_program(&self, commitment: &ProgramCommitment) -> bool {
+        self.versions
+            .iter()
+            .any(|v| v.program_commitment.as_ref() == Some(commitment))
     }
 }
