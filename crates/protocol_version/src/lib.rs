@@ -21,15 +21,19 @@ struct ProtocolVersion {
     /// NOTE2: this can be inferred from zksync_os_version, but we keep it here for easier cross-checking
     bin_md5sum: BinMd5Sum,
     /// Chain commitment of the app program this version proves (see [`ProgramCommitment`]).
-    /// Since V8 the SNARK VK is app-independent, so the (vk_hash, program_commitment)
-    /// pair is what identifies a version. `None` pre-V8 (VK covered the binary).
+    /// The SNARK wrapper bakes it into the VK (registers 18..=25 == aux_params, via
+    /// `check_aux_params`), so `vk_hash` alone identifies the app program again; this field
+    /// is the plaintext of that binding, used to reject wrong-program FRI proofs up front
+    /// and to re-derive/verify the VK. `None` pre-V8 (the VK already covered the binary).
     program_commitment: Option<ProgramCommitment>,
 }
 
-/// Blake2s recursion-chain commitment binding a protocol version to its app program:
-/// the base program's `end_params` folded with the unrolled recursion verifier's — the
-/// value proofs expose in final registers 18..=25 and the settlement side checks the
-/// SNARK public input against. See `zksync_os_fri_prover::compute_program_commitment`.
+/// Blake2s recursion-chain commitment binding a protocol version to its app program: the
+/// base program's `end_params` folded with the unrolled recursion verifier's — the value
+/// proofs expose in final registers 18..=25. The SNARK wrapper constrains those registers
+/// to this value in-circuit (`check_aux_params`), so the app program is bound through the
+/// VK rather than carried in the SNARK public input. See
+/// `zksync_os_fri_prover::compute_program_commitment`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgramCommitment(pub [u32; 8]);
 
@@ -124,6 +128,13 @@ const V7: ProtocolVersion = ProtocolVersion {
 };
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
+///
+/// TODO(vk-regen): the `vk_hash` below is the pre-`check_aux_params` value — that VK did
+/// not bind the app program. Enabling the VK-level binding (`check_aux_params = true`,
+/// see `zksync_os_snark_prover::create_snark_wrapper`) changes the VK, so this hash MUST
+/// be regenerated over `multiblock_batch.bin` and the new value re-registered on L1 and
+/// re-published by the sequencer before this version proves in production. `program_commitment`
+/// is unaffected (it is the value the new VK bakes in).
 const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
         "0x3e7784b0fdb09035a677ae80568d34fdb1f1ec6ac65bba5192cd977a4f0e7609",

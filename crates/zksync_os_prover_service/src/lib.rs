@@ -147,6 +147,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     // the retry closure below can borrow it mutably.
     let wrapper_source = RefCell::new(zksync_os_snark_prover::WrapperSource::PerJob {
         trusted_setup_file: args.trusted_setup_file.clone(),
+        app_bin_path: binary_path.clone(),
         host_cache: None,
     });
 
