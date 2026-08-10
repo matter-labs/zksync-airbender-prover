@@ -1,12 +1,8 @@
 use protocol_version::SupportedProtocolVersions;
 use std::path::Path;
 
-/// Pins the `program_commitment` values recorded in `protocol_version` to the actual
-/// `multiblock_batch.bin`/`.text` pair shipped in this repo.
-///
-/// Ignored by default: deriving the commitment recomputes the program's setup caps,
-/// which takes minutes in debug builds. Run it (in release) whenever the app binary or
-/// the airbender/zkos-wrapper pins change:
+/// Pins the recorded `program_commitment` values to the repo's `multiblock_batch.bin`.
+/// Run when bumping the binary or the airbender/zkos-wrapper pins:
 ///
 /// ```bash
 /// cargo test -p zksync_os_fri_prover --release -- --ignored program_commitment

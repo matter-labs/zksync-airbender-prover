@@ -21,19 +21,15 @@ struct ProtocolVersion {
     /// NOTE2: this can be inferred from zksync_os_version, but we keep it here for easier cross-checking
     bin_md5sum: BinMd5Sum,
     /// Chain commitment of the app program this version proves (see [`ProgramCommitment`]).
-    ///
-    /// Since V8 the SNARK VK is app-independent, so `vk_hash` alone no longer identifies
-    /// the app binary; the (vk_hash, program_commitment) pair does. `None` for pre-V8
-    /// versions, whose VK had the binary commitment baked into the circuit.
+    /// Since V8 the SNARK VK is app-independent, so the (vk_hash, program_commitment)
+    /// pair is what identifies a version. `None` pre-V8 (VK covered the binary).
     program_commitment: Option<ProgramCommitment>,
 }
 
-/// The blake2s recursion-chain commitment binding a protocol version to its app program
-/// (`multiblock_batch.bin`/`.text`): the base program's `end_params` folded with the
-/// unrolled recursion verifier's, exactly the value the unified recursion verifier
-/// exposes in its final registers 18..=25 and the settlement side checks the SNARK
-/// public input against. Computed with zkos-wrapper's `BinaryCommitment::from_base_binary`
-/// (`aux_params`); see `zksync_os_fri_prover::compute_program_commitment`.
+/// Blake2s recursion-chain commitment binding a protocol version to its app program:
+/// the base program's `end_params` folded with the unrolled recursion verifier's — the
+/// value proofs expose in final registers 18..=25 and the settlement side checks the
+/// SNARK public input against. See `zksync_os_fri_prover::compute_program_commitment`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgramCommitment(pub [u32; 8]);
 
@@ -168,9 +164,8 @@ impl SupportedProtocolVersions {
             .collect()
     }
 
-    /// Returns the app-program commitment recorded for the version with this VK hash.
-    ///
-    /// `None` if the version is not supported, or predates program commitments (pre-V8).
+    /// The app-program commitment recorded for the version with this VK hash;
+    /// `None` if the version is unsupported or pre-V8.
     pub fn program_commitment_for(&self, vk_hash: &str) -> Option<ProgramCommitment> {
         self.versions
             .iter()

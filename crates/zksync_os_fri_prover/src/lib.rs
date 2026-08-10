@@ -97,31 +97,18 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     ProgramProver::new(source, config).map_err(|e| anyhow::anyhow!("failed to create prover: {e}"))
 }
 
-/// Compute the chain commitment of the app program at `binary_path` (`.text` sibling
-/// derived like [`create_prover`] does).
+/// Compute the [`ProgramCommitment`] of the app program at `binary_path` (`.text`
+/// sibling derived like [`create_prover`] does).
 ///
-/// This is the blake2s recursion-chain value — the base program's `end_params` folded
-/// with the unrolled recursion verifier's — that proofs of this program expose in their
-/// final registers 18..=25 and that the settlement side checks the SNARK public input
-/// against. Since V8 the SNARK VK no longer covers the app binary, so the
-/// (vk_hash, program commitment) pair is what identifies a protocol version end to end;
-/// comparing this value against the [`SupportedProtocolVersions`] table catches a
-/// "right prover stack, wrong binary" deployment before any proving starts.
+/// Uses zkos-wrapper's own `BinaryCommitment`, so the value is byte-identical to what
+/// the wrapper chain enforces — but that recomputes the program's setup caps, which
+/// takes on the order of a minute. Call once at startup.
 ///
-/// Derived with zkos-wrapper's own `BinaryCommitment` so the value is byte-identical to
-/// what the wrapper chain enforces. Note this recomputes the program's setup caps
-/// (the prover's own copy in [`create_prover`] is not accessible), which takes on the
-/// order of a minute — call it once at startup.
-///
-/// TODO: the GPU prover already computes this exact value at construction —
-/// airbender's `UnrolledProver::level_data[RecursionUnrolled].hash_chain` is this chain
-/// (the unified level's is one fold too far); only `ProgramProver`'s private `inner`
-/// field keeps it out of reach. When cutting the next airbender + zkos-wrapper tag pair
-/// (non-rc), add an accessor upstream returning `Option<[u32; 8]>` (`None` for the CPU
-/// backend, which holds no setups, and for base-only targets; only matches the wrapper
-/// when the configured security level equals the wrapper's active security model) and
-/// prefer it over this function at startup. Keep this function as the CPU fallback, the
-/// wrapper-side ground truth for the identity test, and the only GPU-free derivation.
+/// TODO: with the next non-rc airbender + zkos-wrapper tag pair, expose this from
+/// `ProgramProver` instead — the GPU prover already derives it at construction
+/// (`UnrolledProver::level_data[RecursionUnrolled].hash_chain`; the unrolled level, not
+/// unified, which folds one layer too far). Keep this function as the CPU/GPU-free
+/// fallback and the identity test's ground truth.
 pub fn compute_program_commitment(binary_path: &Path) -> anyhow::Result<ProgramCommitment> {
     let source = ProgramSource::from_paths(
         binary_path
@@ -179,10 +166,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
 
-    // Fail fast on a binary none of the supported versions proves: such a deployment
-    // could only produce proofs the settlement side rejects (the SNARK VK does not
-    // cover the app binary; this commitment, carried through the recursion chain, is
-    // what gets checked downstream).
+    // Fail fast on a binary no supported version proves — its proofs could only be
+    // rejected at settlement.
     let program_commitment = compute_program_commitment(&binary_path)?;
     tracing::info!("App program commitment: {program_commitment}");
     anyhow::ensure!(
@@ -297,9 +282,8 @@ pub async fn run_inner(
                 );
                 return Ok(false);
             }
-            // The job's version must prove the program this prover has loaded — a
-            // mismatched proof would only be rejected downstream, after the GPU time
-            // is already spent.
+            // The job's version must prove the loaded program — a mismatched proof
+            // would be rejected downstream, after the GPU time is spent.
             let expected = supported_versions.program_commitment_for(&fri_job_input.vk_hash);
             if expected != Some(*program_commitment) {
                 tracing::error!(

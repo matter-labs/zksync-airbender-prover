@@ -127,8 +127,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
 
-    // Fail fast on a binary none of the supported versions proves — its proofs could
-    // only be rejected downstream (the SNARK VK does not cover the app binary).
+    // Fail fast on a binary no supported version proves — its proofs could only be
+    // rejected at settlement.
     let program_commitment = zksync_os_fri_prover::compute_program_commitment(&binary_path)?;
     tracing::info!("App program commitment: {program_commitment}");
     anyhow::ensure!(

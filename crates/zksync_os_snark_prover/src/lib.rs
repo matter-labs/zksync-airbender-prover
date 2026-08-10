@@ -91,15 +91,10 @@ pub fn create_snark_wrapper_with_cache(
     Ok(wrapper)
 }
 
-/// The app-program chain commitment a FRI proof carries in its final registers 18..=25.
-///
-/// This is the value the settlement side compares the SNARK public input against (the
-/// SNARK VK itself does not cover the app binary), so checking it against the protocol
-/// version's recorded commitment up front rejects proofs of the wrong program before
-/// the wrap chain spends GPU time on them. Combined (multi-batch) proofs carry the same
-/// shared chain in the same registers. Note the proof's `recursion_chain_hash` field is
-/// NOT this value — that is the prover-internal recursion-layer chain, which varies
-/// with the number of unified passes.
+/// The app-program chain commitment a FRI proof (combined multi-batch ones included)
+/// carries in its final registers 18..=25 — the value the settlement side checks the
+/// SNARK public input against. NOT the proof's `recursion_chain_hash`, which is the
+/// prover-internal layer chain and varies with the number of unified passes.
 fn carried_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment {
     let mut words = [0u32; 8];
     for (i, word) in words.iter_mut().enumerate() {
@@ -336,9 +331,9 @@ pub async fn run_inner(
                 );
                 return Ok(false);
             }
-            // Every proof of the job must attest the app program its protocol version
-            // proves; a wrong-program proof would survive the whole wrap chain (the
-            // SNARK VK does not cover the app binary) only to be rejected downstream.
+            // Reject wrong-program proofs up front — they would survive the whole wrap
+            // chain (the SNARK VK does not cover the app binary) only to be rejected
+            // at settlement.
             if let Some(expected) =
                 supported_protocol_versions.program_commitment_for(&snark_proof_input.vk_hash)
             {
