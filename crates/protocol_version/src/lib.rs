@@ -105,7 +105,7 @@ const V8: ProtocolVersion = ProtocolVersion {
     airbender_version: AirbenderVersion("v0.6.0-rc.1"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.1"),
-    bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
+    bin_md5sum: BinMd5Sum("8128c18a3b7145366b184e027d0e0f34"),
 };
 
 /// Represents the set of supported protocol versions by this prover implementation.
