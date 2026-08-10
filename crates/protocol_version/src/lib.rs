@@ -129,15 +129,18 @@ const V7: ProtocolVersion = ProtocolVersion {
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
 ///
-/// TODO(vk-regen): the `vk_hash` below is the pre-`check_aux_params` value — that VK did
-/// not bind the app program. Enabling the VK-level binding (`check_aux_params = true`,
-/// see `zksync_os_snark_prover::create_snark_wrapper`) changes the VK, so this hash MUST
-/// be regenerated over `multiblock_batch.bin` and the new value re-registered on L1 and
-/// re-published by the sequencer before this version proves in production. `program_commitment`
-/// is unaffected (it is the value the new VK bakes in).
+/// `vk_hash` is the `check_aux_params = true` VK, which binds the app program in-circuit
+/// (see `zksync_os_snark_prover::create_snark_wrapper`); regenerated over
+/// `multiblock_batch.bin` with `crs/setup_2^24.key`. The pre-`check_aux_params` value was
+/// `0x3e7784b0fdb09035a677ae80568d34fdb1f1ec6ac65bba5192cd977a4f0e7609`.
+///
+/// NOTE: this VK must still be adopted downstream before it proves in production — the
+/// sequencer must publish this hash in its job payloads, and the matching SNARK verifier
+/// (regenerated from the new `snark_vk.json`) redeployed and registered on L1
+/// (era-contracts). `program_commitment` is the value the VK bakes into registers 18..=25.
 const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0x3e7784b0fdb09035a677ae80568d34fdb1f1ec6ac65bba5192cd977a4f0e7609",
+        "0xf89183f266d570b6a0119da65348bcb068fb858835fb3f49e2176b4e15048bcc",
     ),
     airbender_version: AirbenderVersion("v0.6.0-rc.1"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
