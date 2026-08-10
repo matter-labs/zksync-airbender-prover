@@ -112,6 +112,16 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
 /// what the wrapper chain enforces. Note this recomputes the program's setup caps
 /// (the prover's own copy in [`create_prover`] is not accessible), which takes on the
 /// order of a minute — call it once at startup.
+///
+/// TODO: the GPU prover already computes this exact value at construction —
+/// airbender's `UnrolledProver::level_data[RecursionUnrolled].hash_chain` is this chain
+/// (the unified level's is one fold too far); only `ProgramProver`'s private `inner`
+/// field keeps it out of reach. When cutting the next airbender + zkos-wrapper tag pair
+/// (non-rc), add an accessor upstream returning `Option<[u32; 8]>` (`None` for the CPU
+/// backend, which holds no setups, and for base-only targets; only matches the wrapper
+/// when the configured security level equals the wrapper's active security model) and
+/// prefer it over this function at startup. Keep this function as the CPU fallback, the
+/// wrapper-side ground truth for the identity test, and the only GPU-free derivation.
 pub fn compute_program_commitment(binary_path: &Path) -> anyhow::Result<ProgramCommitment> {
     let source = ProgramSource::from_paths(
         binary_path
