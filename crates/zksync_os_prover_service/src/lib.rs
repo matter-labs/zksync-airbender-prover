@@ -66,6 +66,11 @@ pub struct Args {
     /// Port to run the Prometheus metrics server on
     #[arg(long, default_value = "3124")]
     pub prometheus_port: u16,
+    /// Timeout for HTTP requests to the sequencer, in seconds.
+    /// Must comfortably exceed the time to upload a full FRI/SNARK proof body -
+    /// the client default of 2s is only viable for job polling, not submission.
+    #[arg(long, default_value = "300")]
+    pub request_timeout_secs: u64,
     /// Disable ZK for SNARK proofs
     #[arg(long, default_value_t = false)]
     pub disable_zk: bool,
@@ -113,7 +118,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let clients = SequencerProofClient::new_clients(
         args.sequencer_urls,
         "prover_service".to_string(),
-        None,
+        Some(Duration::from_secs(args.request_timeout_secs)),
         supported_versions.vk_hashes(),
     )
     .context("failed to create sequencer proof clients")?;
@@ -126,16 +131,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let binary_path = args
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
-
-    // Fail fast on a binary no supported version proves — its proofs could only be
-    // rejected at settlement.
-    let program_commitment = zksync_os_fri_prover::compute_program_commitment(&binary_path)?;
-    tracing::info!("App program commitment: {program_commitment}");
-    anyhow::ensure!(
-        supported_versions.supports_program(&program_commitment),
-        "program {binary_path:?} (commitment {program_commitment}) is not proven by any \
-         supported protocol version"
-    );
 
     // The FRI prover and the FRI-proof combiner each size their device pool to "all
     // free VRAM" and need essentially the whole card (on prod-shaped L4s a resident
@@ -171,6 +166,18 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         // The FRI prover holds the program setups (and the GPU context when built with the
         // `gpu` feature); it is recreated each cycle so the GPU is released before SNARKing.
         let fri_prover = zksync_os_fri_prover::create_prover(&binary_path)?;
+
+        // Fail fast on a binary no supported version proves — its proofs could only be
+        // rejected at settlement. Read off the prover's own setups, so this is free.
+        let program_commitment = zksync_os_fri_prover::program_commitment(&fri_prover).context(
+            "program commitment unavailable (CPU backend); cannot verify the app binary",
+        )?;
+        anyhow::ensure!(
+            supported_versions.supports_program(&program_commitment),
+            "program {binary_path:?} (commitment {program_commitment}) is not proven by any \
+             supported protocol version"
+        );
+        tracing::info!("App program commitment: {program_commitment}");
 
         // Run FRI prover until we hit one of the limits
         tracing::info!("Running FRI prover on sequencer {}", client.sequencer_url());
