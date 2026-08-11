@@ -23,7 +23,6 @@ zksync_airbender_execution_utils.workspace = true
 # Used only to derive the app program's chain commitment with the exact same code the
 # SNARK wrapper chain uses (`BinaryCommitment::from_base_binary`), so the value can't
 # drift from what the settlement side enforces.
-zkos_wrapper.workspace = true
 
 # external dependencies
 anyhow.workspace = true

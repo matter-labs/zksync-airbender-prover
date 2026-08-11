@@ -66,9 +66,8 @@ pub struct Args {
     /// Port to run the Prometheus metrics server on
     #[arg(long, default_value = "3124")]
     pub prometheus_port: u16,
-    /// Timeout for HTTP requests to the sequencer, in seconds.
-    /// Must comfortably exceed the time to upload a full FRI/SNARK proof body -
-    /// the client default of 2s is only viable for job polling, not submission.
+    /// Timeout for HTTP requests to the sequencer, in seconds. Must exceed the time to
+    /// upload and verify a proof body; the client default of 2s only suits job polling.
     #[arg(long, default_value = "300")]
     pub request_timeout_secs: u64,
     /// Disable ZK for SNARK proofs
@@ -167,8 +166,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         // `gpu` feature); it is recreated each cycle so the GPU is released before SNARKing.
         let fri_prover = zksync_os_fri_prover::create_prover(&binary_path)?;
 
-        // Fail fast on a binary no supported version proves — its proofs could only be
-        // rejected at settlement. Read off the prover's own setups, so this is free.
+        // Fail fast on a binary no supported version proves; free, from the prover's setups.
         let program_commitment = zksync_os_fri_prover::program_commitment(&fri_prover).context(
             "program commitment unavailable (CPU backend); cannot verify the app binary",
         )?;
