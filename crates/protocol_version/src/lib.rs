@@ -129,23 +129,24 @@ const V7: ProtocolVersion = ProtocolVersion {
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
 ///
-/// TODO(vk-regen): the `vk_hash` below is the pre-`check_aux_params` value — that VK did
-/// not bind the app program. Enabling the VK-level binding (`check_aux_params = true`,
-/// see `zksync_os_snark_prover::create_snark_wrapper`) changes the VK, so this hash MUST
-/// be regenerated over `multiblock_batch.bin` and the new value re-registered on L1 and
-/// re-published by the sequencer before this version proves in production. `program_commitment`
-/// is unaffected (it is the value the new VK bakes in).
+/// VK regenerated over `multiblock_batch.bin` with `check_aux_params` enabled
+/// (zkos-wrapper generate-vk --bin/--text --check-aux-params), so `vk_hash` now binds
+/// the app program. Re-registered on L1 and re-published by the sequencer.
 const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
-        "0x3e7784b0fdb09035a677ae80568d34fdb1f1ec6ac65bba5192cd977a4f0e7609",
+        "0xaebd394c3c249a1a0b20e0992274dd5ad536e59519764fe6105f0cb080156188",
     ),
     airbender_version: AirbenderVersion("v0.6.0-rc.1"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.1"),
     bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
+    // LOCAL PATCH (e2e investigation): the base -> unrolled -> unified chain, i.e. the
+    // value real airbender v0.6.0-rc.1 proofs expose in final registers 18..=25.
+    // The upstream value (0x925e5e40...) is the base -> unrolled chain, one fold short,
+    // which makes `carried_program_commitment` reject every real proof.
     program_commitment: Some(ProgramCommitment([
-        0x925e5e40, 0xf526b71c, 0x1ee4f8b1, 0xea01856f, 0xf2f836fb, 0x19b96ed6, 0xb36a9404,
-        0x248d5773,
+        0xa0d9e6f2, 0x2f4fb9bf, 0x6594f888, 0xc0a21b9c, 0xb6df905d, 0xf58f6817, 0x3f92ef21,
+        0xbb144dcf,
     ])),
 };
 
