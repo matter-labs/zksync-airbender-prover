@@ -25,12 +25,17 @@ pub async fn start_metrics_exporter(
     Ok(())
 }
 
+const PROVING_LATENCIES: vise::Buckets = vise::Buckets::values(&[
+    0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0,
+    2000.0, 5000.0, 10_000.0,
+]);
+
 #[derive(Debug, Clone, Metrics)]
 #[metrics(prefix = "snark_prover")]
 pub struct SnarkProverMetrics {
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
     pub time_taken_startup: Histogram,
-    #[metrics(buckets = vise::Buckets::linear(1.0..=150.0, 20.0), unit = vise::Unit::Seconds)]
+    #[metrics(buckets = PROVING_LATENCIES, unit = vise::Unit::Seconds)]
     pub time_taken_merge_fri: Histogram,
     /// Time spent building the per-job SNARK wrapper in the combined prover service,
     /// which drops the wrapper between jobs so it can't compete with the FRI prover
@@ -41,9 +46,9 @@ pub struct SnarkProverMetrics {
     pub time_taken_wrapper_setup: Histogram,
     #[metrics(buckets = vise::Buckets::linear(5.0..=20.0, 2.5), unit = vise::Unit::Seconds)]
     pub time_taken_final_proof: Histogram,
-    #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
+    #[metrics(buckets = PROVING_LATENCIES, unit = vise::Unit::Seconds)]
     pub time_taken_snark: Histogram,
-    #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
+    #[metrics(buckets = PROVING_LATENCIES, unit = vise::Unit::Seconds)]
     pub time_taken_full: Histogram,
     /// Time spent building the merge combiner's caches (unified-level setup and, on
     /// GPU builds, the prover host state). Observed only when a merge found them cold,
