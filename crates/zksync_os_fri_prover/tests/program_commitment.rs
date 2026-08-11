@@ -1,18 +1,39 @@
-use protocol_version::SupportedProtocolVersions;
+use protocol_version::{ProgramCommitment, SupportedProtocolVersions};
 use std::path::Path;
+use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 
-/// Pins the recorded `program_commitment` values to the repo's `multiblock_batch.bin`.
-/// Run when bumping the binary or the airbender/zkos-wrapper pins:
+/// The commitment a proof actually carries, in its final registers `18..=25`.
+fn carried(proof: &UnrolledProgramProof) -> ProgramCommitment {
+    let mut words = [0u32; 8];
+    for (i, word) in words.iter_mut().enumerate() {
+        *word = proof.register_final_values[18 + i].value;
+    }
+    ProgramCommitment(words)
+}
+
+/// Pins the recorded `program_commitment` against a real proof.
+///
+/// Checked against a proof rather than against the function that derives the commitment
+/// from the binary: the previous version compared the constant to
+/// `compute_program_commitment()`, but both went through `BinaryCommitment::from_base_binary`,
+/// so it passed while the constant disagreed with every proof - the failure it existed to catch.
 ///
 /// ```bash
-/// cargo test -p zksync_os_fri_prover --release -- --ignored program_commitment
+/// FRI_PROOF_FIXTURE=/path/to/fri_proof.json \
+///   cargo test -p zksync_os_fri_prover --release -- --ignored program_commitment
 /// ```
 #[test]
-#[ignore = "recomputes program setup caps (minutes in debug); run in release when bumping the binary or pins"]
-fn recorded_program_commitment_matches_repo_binary() {
-    let binary_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../multiblock_batch.bin");
-    let computed = zksync_os_fri_prover::compute_program_commitment(&binary_path)
-        .expect("failed to compute program commitment");
+#[ignore = "needs a real FRI proof fixture; run when bumping the binary or the airbender/zkos-wrapper pins"]
+fn recorded_program_commitment_matches_a_real_proof() {
+    let fixture = std::env::var("FRI_PROOF_FIXTURE").expect(
+        "set FRI_PROOF_FIXTURE to a serialized UnrolledProgramProof of multiblock_batch.bin",
+    );
+    let proof: UnrolledProgramProof = serde_json::from_reader(
+        std::fs::File::open(Path::new(&fixture)).expect("cannot open FRI_PROOF_FIXTURE"),
+    )
+    .expect("cannot deserialize FRI_PROOF_FIXTURE as an UnrolledProgramProof");
+
+    let carried = carried(&proof);
 
     let versions = SupportedProtocolVersions::default();
     let vk_hashes = versions.vk_hashes();
@@ -22,9 +43,9 @@ fn recorded_program_commitment_matches_repo_binary() {
             .program_commitment_for(vk_hash)
             .unwrap_or_else(|| panic!("no program commitment recorded for vk_hash {vk_hash}"));
         assert_eq!(
-            recorded, computed,
+            recorded, carried,
             "program commitment recorded for vk_hash {vk_hash} ({recorded}) does not match \
-             the repo's multiblock_batch.bin ({computed})"
+             the commitment the proof carries in registers 18..=25 ({carried})"
         );
     }
 }

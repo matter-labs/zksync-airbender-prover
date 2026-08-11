@@ -129,9 +129,7 @@ const V7: ProtocolVersion = ProtocolVersion {
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
 ///
-/// VK regenerated over `multiblock_batch.bin` with `check_aux_params` enabled
-/// (zkos-wrapper generate-vk --bin/--text --check-aux-params), so `vk_hash` now binds
-/// the app program. Re-registered on L1 and re-published by the sequencer.
+/// `vk_hash` regenerated with `check_aux_params` enabled, so it binds the app program.
 const V8: ProtocolVersion = ProtocolVersion {
     vk_hash: VerificationKeyHash(
         "0xaebd394c3c249a1a0b20e0992274dd5ad536e59519764fe6105f0cb080156188",
@@ -140,10 +138,7 @@ const V8: ProtocolVersion = ProtocolVersion {
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.1"),
     bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
-    // LOCAL PATCH (e2e investigation): the base -> unrolled -> unified chain, i.e. the
-    // value real airbender v0.6.0-rc.1 proofs expose in final registers 18..=25.
-    // The upstream value (0x925e5e40...) is the base -> unrolled chain, one fold short,
-    // which makes `carried_program_commitment` reject every real proof.
+    // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
     program_commitment: Some(ProgramCommitment([
         0xa0d9e6f2, 0x2f4fb9bf, 0x6594f888, 0xc0a21b9c, 0xb6df905d, 0xf58f6817, 0x3f92ef21,
         0xbb144dcf,

@@ -104,25 +104,13 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
 /// the wrapper chain enforces — but that recomputes the program's setup caps, which
 /// takes on the order of a minute. Call once at startup.
 ///
-/// TODO: with the next non-rc airbender + zkos-wrapper tag pair, expose this from
-/// `ProgramProver` instead — the GPU prover already derives it at construction
-/// (`UnrolledProver::level_data[RecursionUnrolled].hash_chain`; the unrolled level, not
-/// unified, which folds one layer too far). Keep this function as the CPU/GPU-free
-/// fallback and the identity test's ground truth.
-pub fn compute_program_commitment(binary_path: &Path) -> anyhow::Result<ProgramCommitment> {
-    let source = ProgramSource::from_paths(
-        binary_path
-            .to_str()
-            .with_context(|| format!("non-UTF8 binary path {binary_path:?}"))?
-            .to_string(),
-        None,
-    );
-    let bin = std::fs::read(&source.bin_path)
-        .with_context(|| format!("failed to read program binary {}", source.bin_path))?;
-    let text = std::fs::read(&source.text_path)
-        .with_context(|| format!("failed to read program text section {}", source.text_path))?;
-    let commitment = zkos_wrapper::circuits::BinaryCommitment::from_base_binary(&bin, &text);
-    Ok(ProgramCommitment(commitment.aux_params))
+/// The app program commitment, read off the prover's own setups (a map lookup).
+///
+/// Previously recomputed from the binary via `BinaryCommitment::from_base_binary`, which
+/// rebuilt all three setups (~159s on an L4) right before `create_prover` derived them again.
+/// `None` on the CPU backend.
+pub fn program_commitment(prover: &ProgramProver) -> Option<ProgramCommitment> {
+    prover.program_commitment().map(ProgramCommitment)
 }
 
 pub fn create_proof(
@@ -166,17 +154,18 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
 
-    // Fail fast on a binary no supported version proves — its proofs could only be
-    // rejected at settlement.
-    let program_commitment = compute_program_commitment(&binary_path)?;
+    let prover = create_prover(&binary_path)?;
+
+    // Fail fast on a binary no supported version proves. Free now, so it runs after
+    // construction rather than before it.
+    let program_commitment = program_commitment(&prover)
+        .context("program commitment unavailable (CPU backend); cannot verify the app binary")?;
     tracing::info!("App program commitment: {program_commitment}");
     anyhow::ensure!(
         supported_versions.supports_program(&program_commitment),
         "program {binary_path:?} (commitment {program_commitment}) is not proven by any \
          supported protocol version"
     );
-
-    let prover = create_prover(&binary_path)?;
 
     tracing::info!(
         "Starting Zksync OS FRI prover with request timeout of {}s",
