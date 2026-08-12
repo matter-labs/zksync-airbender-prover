@@ -35,9 +35,5 @@ vise.workspace = true
 vise-exporter.workspace = true
 url.workspace = true
 
-[dependencies.era_cudart]
-workspace = true
-optional = true
-
 [features]
-gpu = ["dep:era_cudart", "zksync_airbender_cli/gpu"]
+gpu = ["zksync_airbender_cli/gpu"]

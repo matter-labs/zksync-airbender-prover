@@ -10,8 +10,8 @@ use clap::Parser;
 use protocol_version::{ProgramCommitment, SupportedProtocolVersions};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
-    serialize_to_file, GpuConfig, GpuMemoryPreset, ProgramProver, ProgramProverConfig,
-    ProgramSource, ProofTarget, SecurityLevel,
+    serialize_to_file, ProgramProver, ProgramProverConfig, ProgramSource, ProofTarget,
+    SecurityLevel,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{
@@ -82,37 +82,6 @@ pub fn init_tracing() {
 /// verifier binaries and therefore the recursion chain the proofs carry.
 pub const PROVING_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security80;
 
-/// Device arena size for the FRI prover, in 1 MiB allocator blocks.
-///
-/// `None` (the preset's fixed size) whenever the device is untouched and the preset fits, so
-/// the common single-phase case is unchanged. Otherwise the arena is trimmed to the free
-/// memory less a reserve for the CUDA context and per-circuit working buffers.
-#[cfg(feature = "gpu")]
-fn fri_arena_blocks() -> Option<usize> {
-    /// Preset arena (`LOW_ARENA_BYTES`), in blocks.
-    const PRESET_BLOCKS: usize = 23_085_449_216 / (1 << 20);
-    /// Headroom the prover needs on top of the arena. Measured at ~306 MiB on an L4; 384
-    /// leaves margin without trimming when the preset would still have fit.
-    const RESERVE_BLOCKS: usize = 384;
-
-    let (free, _total) = era_cudart::memory::memory_get_info().ok()?;
-    let free_blocks = free / (1 << 20);
-    if free_blocks >= PRESET_BLOCKS + RESERVE_BLOCKS {
-        return None;
-    }
-    let usable = free_blocks.saturating_sub(RESERVE_BLOCKS);
-    tracing::info!(
-        "trimming FRI arena to {usable} blocks ({} MiB free, preset wants {PRESET_BLOCKS})",
-        free_blocks
-    );
-    Some(usable)
-}
-
-#[cfg(not(feature = "gpu"))]
-fn fri_arena_blocks() -> Option<usize> {
-    None
-}
-
 pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     let source = ProgramSource::from_paths(
         binary_path
@@ -129,22 +98,12 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     let config = ProgramProverConfig {
         // Recursion up to the unified layer: the compact form expected by the SNARK wrapper.
         target: ProofTarget::RecursionUnified,
-        // 100-bit security. Selects the `*_security_100_bits` recursion verifier binaries, so
-        // it changes the recursion chain (and therefore the program commitment and the VK) -
-        // it is not a knob that can be flipped independently of those constants.
+        // The level selects the recursion verifier binaries, so it changes the recursion chain
+        // (and therefore the program commitment and the VK) - not a knob that can be flipped
+        // independently of those constants.
         security_level: PROVING_SECURITY_LEVEL,
-        // Size the arena to what is actually free rather than taking the preset's fixed
-        // 21.5 GiB. The preset size is nearly the whole device on a 24GB-class card, so once
-        // anything else has touched the GPU - a SNARK phase in the same process, say - the
-        // arena can no longer be re-reserved even though the free total still exceeds it.
-        // Fitting the arena to free memory lets the process alternate FRI and SNARK
-        // indefinitely without tearing the device down (which would discard the wrapper and
-        // combiner caches).
-        gpu: GpuConfig {
-            memory_preset: GpuMemoryPreset::Low,
-            arena_blocks: fri_arena_blocks(),
-            ..Default::default()
-        },
+        // Memory preset is left at `Auto`, which takes the larger arena when the device can
+        // hold it and falls back to the low-VRAM one otherwise.
         ..Default::default()
     };
     ProgramProver::new(source, config).map_err(|e| anyhow::anyhow!("failed to create prover: {e}"))
