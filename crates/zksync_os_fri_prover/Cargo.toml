@@ -19,10 +19,6 @@ zksync_sequencer_proof_client.workspace = true
 zksync_airbender_cli.workspace = true
 zksync_airbender_execution_utils.workspace = true
 
-# zkos-wrapper dependencies
-# Used only to derive the app program's chain commitment with the exact same code the
-# SNARK wrapper chain uses (`BinaryCommitment::from_base_binary`), so the value can't
-# drift from what the settlement side enforces.
 
 # external dependencies
 anyhow.workspace = true
@@ -39,5 +35,9 @@ vise.workspace = true
 vise-exporter.workspace = true
 url.workspace = true
 
+[dependencies.era_cudart]
+workspace = true
+optional = true
+
 [features]
-gpu = ["zksync_airbender_cli/gpu"]
+gpu = ["dep:era_cudart", "zksync_airbender_cli/gpu"]
