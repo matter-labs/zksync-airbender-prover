@@ -11,8 +11,8 @@ use zksync_airbender_cli::prover_utils::CpuConfig;
 #[cfg(feature = "gpu")]
 use zksync_airbender_cli::prover_utils::GpuConfig;
 use zksync_airbender_cli::prover_utils::{
-    CarriedChainCombiner, ProgramProverConfig, ProgramSource, ProofArtifact, ProofCounts,
-    ProofTarget, ProofTimingsMs, ProverBackend,
+    CarriedChainCombiner, ProgramSource, ProofArtifact, ProofCounts, ProofTarget, ProofTimingsMs,
+    ProverBackend,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
