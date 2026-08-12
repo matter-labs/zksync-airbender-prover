@@ -159,9 +159,9 @@ fn carried_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment
 /// [`CarriedChainCombiner::warm_up`] to pay that cost at startup instead. Note the GPU
 /// host state pins tens of gigabytes of host RAM for the lifetime of the combiner.
 pub fn create_combiner() -> CarriedChainCombiner {
-    // The security level is trusted caller input for the combine; use the level
-    // the FRI prover proves at (its `ProgramProverConfig::default()`).
-    let security_level = ProgramProverConfig::default().security_level;
+    // Must match the level the FRI prover proves at - the level selects the recursion
+    // verifier binaries, so a mismatch produces proofs the combine cannot verify.
+    let security_level = zksync_os_fri_prover::PROVING_SECURITY_LEVEL;
     #[cfg(feature = "gpu")]
     {
         CarriedChainCombiner::new_gpu(security_level, GpuConfig::default())
