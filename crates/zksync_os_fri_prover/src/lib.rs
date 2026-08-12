@@ -10,9 +10,8 @@ use clap::Parser;
 use protocol_version::{ProgramCommitment, SupportedProtocolVersions};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
-    GpuConfig, GpuMemoryPreset,
-    SecurityLevel,
-    serialize_to_file, ProgramProver, ProgramProverConfig, ProgramSource, ProofTarget,
+    serialize_to_file, GpuConfig, GpuMemoryPreset, ProgramProver, ProgramProverConfig,
+    ProgramSource, ProofTarget, SecurityLevel,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{
