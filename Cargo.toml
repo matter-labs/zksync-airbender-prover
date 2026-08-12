@@ -26,18 +26,25 @@ protocol_version = { path = "crates/protocol_version" }
 zksync_os_fri_prover = { path = "crates/zksync_os_fri_prover" }
 
 # zksync-airbender dependencies
-# NOTE: the URL form and tag must match the ones used by zkos-wrapper so that
+# NOTE: the URL form and ref must match the ones used by zkos-wrapper so that
 # cargo unifies the git source instead of building two copies of the airbender crates.
-# v0.6.0-rc.1 (= 3f8f8e54) includes matter-labs/zksync-airbender#340 (multi-batch proof
-# combining in the unified layer: GPU backend for the combine flow, carried-chain
-# combine detached from the app binary, reusable combiner state across merge jobs).
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.1" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.1" }
+# rev 580ad92d = the v0.6.0-rc.1 tag commit (3f8f8e54, matter-labs/zksync-airbender#340:
+# multi-batch proof combining in the unified layer) plus the two additive commits of
+# matter-labs/zksync-airbender#378 (`ProgramProver::program_commitment()`,
+# `GpuConfig::arena_blocks`), which this workspace uses.
+# TODO(airbender-378): move back to a tag once #378 lands in the next airbender +
+# zkos-wrapper tag pair (bump both pins in lockstep).
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", rev = "580ad92dec77a478ada40b4f2b85d6b868f46d2f" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", rev = "580ad92dec77a478ada40b4f2b85d6b868f46d2f" }
 
 # zkos-wrapper dependencies
-# v0.6.0-rc.1 includes matter-labs/zkos-wrapper#75 (airbender pinned to v0.6.0-rc.1,
-# host-side setup cache carried between SNARK wrapper sessions).
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", tag = "v0.6.0-rc.1" }
+# rev 024350a3 = branch dz-aux-params-unified-chain-airbender-378: the v0.6.0-rc.1 tag
+# commit (32e7eb42, matter-labs/zkos-wrapper#75: host-side setup cache carried between
+# SNARK wrapper sessions) plus matter-labs/zkos-wrapper#77 (fold the unified layer into
+# `BinaryCommitment::aux_params`, required for `check_aux_params` to accept real V8
+# proofs) plus a pin bump pointing its airbender deps at the same rev as above.
+# TODO(airbender-378): move back to a tag together with the airbender pin above.
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "024350a3f9ded2e3c43be6153921034c7c80455d" }
 
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps
@@ -89,4 +96,3 @@ overflow-checks = true
 lto = false
 # This is needed for zksync-airbender crates to compile in a reasonable time for x86-64-unknown-linux-gnu
 overflow-checks = true
-
