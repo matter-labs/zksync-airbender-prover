@@ -34,12 +34,12 @@ zksync_airbender_execution_utils = { package = "execution_utils", git = "https:/
 zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.2" }
 
 # zkos-wrapper dependencies
-# rev 4389ead4 = matter-labs/zkos-wrapper#77 (fold the unified layer into
+# rev 1158964b = matter-labs/zkos-wrapper#77 (fold the unified layer into
 # `BinaryCommitment::aux_params`), on airbender v0.6.0-rc.2 like the pins above.
 # TODO(zkos-wrapper-77): move to a tag once #77 lands.
 # Level stated explicitly, not inherited from the wrapper's default, so it can't drift out
 # of lockstep with `PROVING_SECURITY_LEVEL`.
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "4389ead4f65a22328826e86c155c95324e8de426", default-features = false, features = ["security_100"] }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "1158964bd31f0ce8c6380e6326566a28af743112", default-features = false, features = ["security_100"] }
 
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps
