@@ -28,27 +28,24 @@ zksync_os_fri_prover = { path = "crates/zksync_os_fri_prover" }
 # zksync-airbender dependencies
 # NOTE: the URL form and ref must match the ones used by zkos-wrapper so that
 # cargo unifies the git source instead of building two copies of the airbender crates.
-# rev a409f774 = the v0.6.0-rc.1 tag commit (3f8f8e54, matter-labs/zksync-airbender#340:
-# multi-batch proof combining in the unified layer) plus the single additive commit of
-# matter-labs/zksync-airbender#378 (`ProgramProver::program_commitment()`), which this
-# workspace uses.
-# TODO(airbender-378): move back to a tag once #378 lands in the next airbender +
-# zkos-wrapper tag pair (bump both pins in lockstep).
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", rev = "a409f7742fcfb1ecf987d95985eced3a68f53f51" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", rev = "a409f7742fcfb1ecf987d95985eced3a68f53f51" }
+# v0.6.0-rc.2 = the v0.6.0-rc.1 tag commit (3f8f8e54, matter-labs/zksync-airbender#340:
+# multi-batch proof combining in the unified layer) plus matter-labs/zksync-airbender#378
+# (`ProgramProver::program_commitment()`), which this workspace uses. #378 has landed on
+# dev as 03454c7a and is tagged, so these no longer pin an unmerged head.
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.2" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.2" }
 
 # zkos-wrapper dependencies
-# rev 0f815df4 = branch dz-aux-params-unified-chain-airbender-378: the v0.6.0-rc.1 tag
-# commit (32e7eb42, matter-labs/zkos-wrapper#75: host-side setup cache carried between
-# SNARK wrapper sessions) plus matter-labs/zkos-wrapper#77 (fold the unified layer into
+# rev 4389ead4 = branch dz-aux-params-unified-chain (matter-labs/zkos-wrapper#77): the
+# v0.6.0-rc.1 tag commit (32e7eb42, matter-labs/zkos-wrapper#75: host-side setup cache
+# carried between SNARK wrapper sessions) plus #77 itself (fold the unified layer into
 # `BinaryCommitment::aux_params`, required for `check_aux_params` to accept real V8
-# proofs) plus a pin bump pointing its airbender deps at the same rev as above.
-# TODO(airbender-378): move back to a tag together with the airbender pin above.
-# zkos-wrapper gates the security level behind cargo features and defaults to
-# `security_80`, so this must move in lockstep with
-# `zksync_os_fri_prover::PROVING_SECURITY_LEVEL`. Leaving the default here would build an
-# 80-bit wrapper that verifies 100-bit FRI proofs.
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "0f815df44c1379ee768b392bf85a90a43e22472e", default-features = false, features = ["security_100"] }
+# proofs), on airbender v0.6.0-rc.2 like the pins above so cargo unifies the git source.
+# TODO(zkos-wrapper-77): move to a tag once #77 lands.
+# The security level is stated explicitly rather than relying on zkos-wrapper's default,
+# so this cannot drift out of lockstep with `zksync_os_fri_prover::PROVING_SECURITY_LEVEL`:
+# an 80-bit wrapper verifying 100-bit FRI proofs would be the failure mode.
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "4389ead4f65a22328826e86c155c95324e8de426", default-features = false, features = ["security_100"] }
 
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps
