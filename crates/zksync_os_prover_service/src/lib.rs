@@ -105,34 +105,6 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
-/// Device memory in MiB as `(used, total)`, via `nvidia-smi`.
-///
-/// Diagnostic only: the FRI arena is a single large fixed-size allocation on a card with
-/// ~22 GiB usable, so whether the SNARK phase has actually returned its device memory
-/// decides whether the next FRI phase can start at all.
-fn device_memory_mib() -> Option<(u64, u64)> {
-    let out = std::process::Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=memory.used,memory.total",
-            "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .ok()?;
-    let text = String::from_utf8(out.stdout).ok()?;
-    let line = text.lines().next()?;
-    let (used, total) = line.split_once(',')?;
-    Some((used.trim().parse().ok()?, total.trim().parse().ok()?))
-}
-
-fn log_device_memory(stage: &str) {
-    if let Some((used, total)) = device_memory_mib() {
-        tracing::info!(
-            "VRAM[{stage}] used={used} MiB free={} MiB total={total} MiB",
-            total - used
-        );
-    }
-}
-
 pub async fn run(args: Args) -> anyhow::Result<()> {
     tracing::info!(
         "Creating {} sequencer proof clients for urls: {:?}",
@@ -192,9 +164,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
         // The FRI prover holds the program setups (and the GPU context when built with the
         // `gpu` feature); it is recreated each cycle so the GPU is released before SNARKing.
-        log_device_memory("before_fri_create");
         let fri_prover = zksync_os_fri_prover::create_prover(&binary_path)?;
-        log_device_memory("after_fri_create");
 
         // Fail fast on a binary no supported version proves; free, from the prover's setups.
         let program_commitment = zksync_os_fri_prover::program_commitment(&fri_prover).context(
@@ -236,9 +206,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             }
         }
         // Release the FRI prover's airbender GPU resources (as now SNARKing will be taking them).
-        log_device_memory("before_fri_drop");
         drop(fri_prover);
-        log_device_memory("after_fri_drop");
 
         // Here we do exactly one SNARK proof
         tracing::info!(
@@ -266,8 +234,6 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         )
         .await
         .expect("Failed to run SNARK prover");
-
-        log_device_memory("after_snark_phase");
 
         if proof_generated {
             // Increment SNARK proof counter
