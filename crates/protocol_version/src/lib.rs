@@ -135,10 +135,12 @@ const V7: ProtocolVersion = ProtocolVersion {
 ///
 /// `vk_hash` regenerated with `check_aux_params` enabled, so it binds the app program.
 const V8: ProtocolVersion = ProtocolVersion {
-    // TODO(v32-100bit): regenerate against a real 100-bit SNARK; the value below is the
-    // 80-bit hash and does NOT correspond to the commitment recorded here.
+    // Keccak256 of the phase-3 SNARK VK, generated at Security100 with `check_aux_params`
+    // against the app binary below (`wrapper generate-vk --check-aux-params`), so it binds
+    // that program. Regenerate whenever the binary, the security level, or the
+    // airbender/zkos-wrapper pins change.
     vk_hash: VerificationKeyHash(
-        "0xaebd394c3c249a1a0b20e0992274dd5ad536e59519764fe6105f0cb080156188",
+        "0xa81dc850a0724bcd62b7e5fbe60c62be32b4b45e33dd0d950f9c313e4684605a",
     ),
     airbender_version: AirbenderVersion("v0.6.0-rc.1"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
