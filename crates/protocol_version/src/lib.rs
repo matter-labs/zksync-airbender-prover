@@ -139,7 +139,7 @@ const V8: ProtocolVersion = ProtocolVersion {
     ),
     airbender_version: AirbenderVersion("v0.6.0-rc.2"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
-    zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.1"),
+    zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.2"),
     // zksync-os draft-0.4.0 @ 8ef47499, built reproducibly.
     bin_md5sum: BinMd5Sum("8128c18a3b7145366b184e027d0e0f34"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
