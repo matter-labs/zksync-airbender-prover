@@ -44,7 +44,11 @@ zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/
 # `BinaryCommitment::aux_params`, required for `check_aux_params` to accept real V8
 # proofs) plus a pin bump pointing its airbender deps at the same rev as above.
 # TODO(airbender-378): move back to a tag together with the airbender pin above.
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "0f815df44c1379ee768b392bf85a90a43e22472e" }
+# zkos-wrapper gates the security level behind cargo features and defaults to
+# `security_80`, so this must move in lockstep with
+# `zksync_os_fri_prover::PROVING_SECURITY_LEVEL`. Leaving the default here would build an
+# 80-bit wrapper that verifies 100-bit FRI proofs.
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "0f815df44c1379ee768b392bf85a90a43e22472e", default-features = false, features = ["security_100"] }
 
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps

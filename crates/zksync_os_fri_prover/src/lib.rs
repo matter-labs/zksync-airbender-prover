@@ -80,7 +80,7 @@ pub fn init_tracing() {
 /// Security level every stage proves at: the FRI prover, the combiner that merges FRI
 /// proofs, and the SNARK wrapper must all agree, since the level selects the recursion
 /// verifier binaries and therefore the recursion chain the proofs carry.
-pub const PROVING_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security80;
+pub const PROVING_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
 
 pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     let source = ProgramSource::from_paths(

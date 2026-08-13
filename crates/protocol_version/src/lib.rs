@@ -129,19 +129,28 @@ const V7: ProtocolVersion = ProtocolVersion {
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
 ///
+/// **100-bit security.** `PROVING_SECURITY_LEVEL` selects the `*_security_100_bits` recursion
+/// verifier binaries, so both `program_commitment` and `vk_hash` below are specific to that
+/// level - the 80-bit values for the same binary are different and are not interchangeable.
+///
 /// `vk_hash` regenerated with `check_aux_params` enabled, so it binds the app program.
 const V8: ProtocolVersion = ProtocolVersion {
+    // TODO(v32-100bit): regenerate against a real 100-bit SNARK; the value below is the
+    // 80-bit hash and does NOT correspond to the commitment recorded here.
     vk_hash: VerificationKeyHash(
         "0xaebd394c3c249a1a0b20e0992274dd5ad536e59519764fe6105f0cb080156188",
     ),
     airbender_version: AirbenderVersion("v0.6.0-rc.1"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.1"),
-    bin_md5sum: BinMd5Sum("3e19df8c36564939950e0a079061ad1b"),
+    // zksync-os draft-0.4.0 @ 8ef47499 (the #733 merge), built reproducibly.
+    bin_md5sum: BinMd5Sum("8128c18a3b7145366b184e027d0e0f34"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
+    // Measured from `ProgramProver` at Security100 against the binary above:
+    // 0xe8f4648be3a0304a290c7e214e01ba9b4b5920175ba664501564424b4cfb7283
     program_commitment: Some(ProgramCommitment([
-        0xa0d9e6f2, 0x2f4fb9bf, 0x6594f888, 0xc0a21b9c, 0xb6df905d, 0xf58f6817, 0x3f92ef21,
-        0xbb144dcf,
+        0xe8f4648b, 0xe3a0304a, 0x290c7e21, 0x4e01ba9b, 0x4b592017, 0x5ba66450, 0x1564424b,
+        0x4cfb7283,
     ])),
 };
 
