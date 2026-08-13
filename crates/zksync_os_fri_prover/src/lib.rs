@@ -73,15 +73,14 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
+/// Level every stage proves at: the FRI prover, the combiner, and the SNARK wrapper must
+/// agree, since it selects the recursion verifier binaries.
+pub const PROVING_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
+
 /// Create a new prover for the given program binary.
 ///
 /// The prover holds all precomputed setup data (and, with the `gpu` feature, the GPU
 /// context), so it should be constructed once and reused across batches.
-/// Security level every stage proves at: the FRI prover, the combiner that merges FRI
-/// proofs, and the SNARK wrapper must all agree, since the level selects the recursion
-/// verifier binaries and therefore the recursion chain the proofs carry.
-pub const PROVING_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
-
 pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     let source = ProgramSource::from_paths(
         binary_path
@@ -98,12 +97,10 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     let config = ProgramProverConfig {
         // Recursion up to the unified layer: the compact form expected by the SNARK wrapper.
         target: ProofTarget::RecursionUnified,
-        // The level selects the recursion verifier binaries, so it changes the recursion
-        // chain (and therefore the program commitment and the VK) - it is not a knob that
-        // can be flipped independently of those constants.
+        // The level changes the recursion chain, and so the program commitment and the VK -
+        // not a knob that can be flipped independently of those constants.
         security_level: PROVING_SECURITY_LEVEL,
-        // `gpu` is left at its default, which is `GpuMemoryPreset::Auto`: take the 28 GiB
-        // normal arena and fall back to the 21.5 GiB low one only if that allocation fails.
+        // `gpu` defaults to `GpuMemoryPreset::Auto`: 28 GiB arena, falling back to 21.5 GiB.
         ..Default::default()
     };
     ProgramProver::new(source, config).map_err(|e| anyhow::anyhow!("failed to create prover: {e}"))

@@ -28,23 +28,17 @@ zksync_os_fri_prover = { path = "crates/zksync_os_fri_prover" }
 # zksync-airbender dependencies
 # NOTE: the URL form and ref must match the ones used by zkos-wrapper so that
 # cargo unifies the git source instead of building two copies of the airbender crates.
-# v0.6.0-rc.2 = the v0.6.0-rc.1 tag commit (3f8f8e54, matter-labs/zksync-airbender#340:
-# multi-batch proof combining in the unified layer) plus matter-labs/zksync-airbender#378
-# (`ProgramProver::program_commitment()`), which this workspace uses. #378 has landed on
-# dev as 03454c7a and is tagged, so these no longer pin an unmerged head.
+# v0.6.0-rc.2 = rc.1 plus matter-labs/zksync-airbender#378
+# (`ProgramProver::program_commitment()`), which this workspace uses.
 zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.2" }
 zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.2" }
 
 # zkos-wrapper dependencies
-# rev 4389ead4 = branch dz-aux-params-unified-chain (matter-labs/zkos-wrapper#77): the
-# v0.6.0-rc.1 tag commit (32e7eb42, matter-labs/zkos-wrapper#75: host-side setup cache
-# carried between SNARK wrapper sessions) plus #77 itself (fold the unified layer into
-# `BinaryCommitment::aux_params`, required for `check_aux_params` to accept real V8
-# proofs), on airbender v0.6.0-rc.2 like the pins above so cargo unifies the git source.
+# rev 4389ead4 = matter-labs/zkos-wrapper#77 (fold the unified layer into
+# `BinaryCommitment::aux_params`), on airbender v0.6.0-rc.2 like the pins above.
 # TODO(zkos-wrapper-77): move to a tag once #77 lands.
-# The security level is stated explicitly rather than relying on zkos-wrapper's default,
-# so this cannot drift out of lockstep with `zksync_os_fri_prover::PROVING_SECURITY_LEVEL`:
-# an 80-bit wrapper verifying 100-bit FRI proofs would be the failure mode.
+# Level stated explicitly, not inherited from the wrapper's default, so it can't drift out
+# of lockstep with `PROVING_SECURITY_LEVEL`.
 zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", rev = "4389ead4f65a22328826e86c155c95324e8de426", default-features = false, features = ["security_100"] }
 
 # zksync-crypto dependencies

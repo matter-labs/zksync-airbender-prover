@@ -129,28 +129,20 @@ const V7: ProtocolVersion = ProtocolVersion {
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
 ///
-/// **100-bit security.** `PROVING_SECURITY_LEVEL` selects the `*_security_100_bits` recursion
-/// verifier binaries, so both `program_commitment` and `vk_hash` below are specific to that
-/// level - the 80-bit values for the same binary are different and are not interchangeable.
-///
-/// `vk_hash` regenerated with `check_aux_params` enabled, so it binds the app program.
+/// **100-bit security.** Both `program_commitment` and `vk_hash` are specific to that level;
+/// the 80-bit values for the same binary differ and are not interchangeable.
 const V8: ProtocolVersion = ProtocolVersion {
-    // Keccak256 of the phase-3 SNARK VK, generated at Security100 with `check_aux_params`
-    // against the app binary below (`wrapper generate-vk --check-aux-params`), so it binds
-    // that program. Regenerate whenever the binary, the security level, or the
-    // airbender/zkos-wrapper pins change.
+    // Keccak256 of the phase-3 SNARK VK (`generate-vk --check-aux-params`), so it binds the
+    // app binary below. Regenerate when the binary, the level, or the pins change.
     vk_hash: VerificationKeyHash(
         "0xa81dc850a0724bcd62b7e5fbe60c62be32b4b45e33dd0d950f9c313e4684605a",
     ),
     airbender_version: AirbenderVersion("v0.6.0-rc.2"),
     zksync_os_version: ZkSyncOSVersion("v0.4.0"),
     zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.1"),
-    // zksync-os draft-0.4.0 @ 8ef47499 (the #733 merge), built reproducibly.
-    // Same value main arrived at independently.
+    // zksync-os draft-0.4.0 @ 8ef47499, built reproducibly.
     bin_md5sum: BinMd5Sum("8128c18a3b7145366b184e027d0e0f34"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
-    // Measured from `ProgramProver` at Security100 against the binary above:
-    // 0xe8f4648be3a0304a290c7e214e01ba9b4b5920175ba664501564424b4cfb7283
     program_commitment: Some(ProgramCommitment([
         0xe8f4648b, 0xe3a0304a, 0x290c7e21, 0x4e01ba9b, 0x4b592017, 0x5ba66450, 0x1564424b,
         0x4cfb7283,
