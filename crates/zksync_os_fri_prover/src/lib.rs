@@ -73,9 +73,20 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
-/// Level every stage proves at: the FRI prover, the combiner, and the SNARK wrapper must
-/// agree, since it selects the recursion verifier binaries.
-pub const PROVING_SECURITY_LEVEL: SecurityLevel = SecurityLevel::Security100;
+/// The level this process proves at, from the supported protocol versions' record,
+/// mapped to airbender's type. Every stage must agree on it — the FRI prover here, the
+/// combiner and the SNARK wrapper in `zksync_os_snark_prover` (which maps the same
+/// record) — since it selects the recursion verifier binaries. Errors if no supported
+/// version records a level.
+fn proving_security_level() -> anyhow::Result<SecurityLevel> {
+    let level = SupportedProtocolVersions::default()
+        .proving_security_level()
+        .context("no supported protocol version records a proving security level")?;
+    Ok(match level {
+        protocol_version::SecurityLevel::Security80 => SecurityLevel::Security80,
+        protocol_version::SecurityLevel::Security100 => SecurityLevel::Security100,
+    })
+}
 
 /// Create a new prover for the given program binary.
 ///
@@ -99,7 +110,7 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
         target: ProofTarget::RecursionUnified,
         // The level changes the recursion chain, and so the program commitment and the VK -
         // not a knob that can be flipped independently of those constants.
-        security_level: PROVING_SECURITY_LEVEL,
+        security_level: proving_security_level()?,
         // `gpu` defaults to `GpuMemoryPreset::Auto`: 28 GiB arena, falling back to 21.5 GiB.
         ..Default::default()
     };

@@ -12,7 +12,7 @@ use zksync_airbender_cli::prover_utils::CpuConfig;
 use zksync_airbender_cli::prover_utils::GpuConfig;
 use zksync_airbender_cli::prover_utils::{
     CarriedChainCombiner, ProgramSource, ProofArtifact, ProofCounts, ProofTarget, ProofTimingsMs,
-    ProverBackend,
+    ProverBackend, SecurityLevel,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
@@ -192,18 +192,39 @@ fn output_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment 
 /// The caches build lazily on the first multi-proof job; call
 /// [`CarriedChainCombiner::warm_up`] to pay that cost at startup instead. Note the GPU
 /// host state pins tens of gigabytes of host RAM for the lifetime of the combiner.
-pub fn create_combiner() -> CarriedChainCombiner {
+pub fn create_combiner() -> anyhow::Result<CarriedChainCombiner> {
     // Must match the level the FRI prover proves at - the level selects the recursion
-    // verifier binaries, so a mismatch produces proofs the combine cannot verify.
-    let security_level = zksync_os_fri_prover::PROVING_SECURITY_LEVEL;
+    // verifier binaries, so a mismatch produces proofs the combine cannot verify. Both
+    // map the same per-version record, so they cannot drift apart.
+    let security_level = proving_security_level()?;
     #[cfg(feature = "gpu")]
     {
-        CarriedChainCombiner::new_gpu(security_level, GpuConfig::default())
+        Ok(CarriedChainCombiner::new_gpu(
+            security_level,
+            GpuConfig::default(),
+        ))
     }
     #[cfg(not(feature = "gpu"))]
     {
-        CarriedChainCombiner::new_cpu(security_level, CpuConfig::default())
+        Ok(CarriedChainCombiner::new_cpu(
+            security_level,
+            CpuConfig::default(),
+        ))
     }
+}
+
+/// The level this process proves at, from the supported protocol versions' record,
+/// mapped to airbender's type — the same mapping `zksync_os_fri_prover` applies (kept
+/// as two four-line matches rather than a crate dependency between the two provers).
+/// Errors if no supported version records a level.
+fn proving_security_level() -> anyhow::Result<SecurityLevel> {
+    let level = SupportedProtocolVersions::default()
+        .proving_security_level()
+        .context("no supported protocol version records a proving security level")?;
+    Ok(match level {
+        protocol_version::SecurityLevel::Security80 => SecurityLevel::Security80,
+        protocol_version::SecurityLevel::Security100 => SecurityLevel::Security100,
+    })
 }
 
 /// Merge the job's FRI proofs into the single unified-layer proof the SNARK wrapper expects.
@@ -340,7 +361,7 @@ pub async fn run_linking_fri_snark(
 
     // Warm the combiner eagerly, mirroring the SNARK precomputation above: setup
     // problems surface at startup and the first multi-proof job doesn't pay for it.
-    let mut combiner = create_combiner();
+    let mut combiner = create_combiner()?;
     combiner.warm_up();
 
     SNARK_PROVER_METRICS

@@ -5678,7 +5678,6 @@ dependencies = [
  "vise",
  "vise-exporter",
  "zkos-wrapper",
- "zksync_os_fri_prover",
  "zksync_sequencer_proof_client",
 ]
 

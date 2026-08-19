@@ -26,6 +26,25 @@ struct ProtocolVersion {
     /// is the plaintext of that binding, used to reject wrong-program FRI proofs up front
     /// and to re-derive/verify the VK. `None` pre-V8 (the VK already covered the binary).
     program_commitment: Option<ProgramCommitment>,
+    /// FRI proving security level the version's constants were generated at (see
+    /// [`SecurityLevel`]). `None` pre-V8: those versions predate the level being recorded
+    /// and proved at airbender's then-default.
+    security_level: Option<SecurityLevel>,
+}
+
+/// FRI proving security level of a protocol version. The level selects the recursion
+/// verifier binaries, so `program_commitment` and `vk_hash` are specific to it: the
+/// values for the same app binary at another level differ and are not interchangeable,
+/// which is why the level is recorded here, next to the constants it invalidates.
+///
+/// Mirrors airbender's `SecurityLevel` as plain data (this crate has no dependencies);
+/// the prover crates map it to airbender's type where they configure proving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityLevel {
+    /// 80-bit security.
+    Security80,
+    /// 100-bit security.
+    Security100,
 }
 
 /// Blake2s recursion-chain commitment binding a protocol version to its app program: the
@@ -73,6 +92,7 @@ const V3: ProtocolVersion = ProtocolVersion {
     zkos_wrapper: ZkOsWrapperVersion("v0.5.0"),
     bin_md5sum: BinMd5Sum("fd9fd6ebfcfe7b3d1557e8a8b8563dd6"),
     program_commitment: None,
+    security_level: None,
 };
 
 /// Corresponds to server's execution_version 4 (or v1.2)
@@ -86,6 +106,7 @@ const V4: ProtocolVersion = ProtocolVersion {
     zkos_wrapper: ZkOsWrapperVersion("v0.5.3"),
     bin_md5sum: BinMd5Sum("a3fffd4f2e14e7171c2207e470316e5f"),
     program_commitment: None,
+    security_level: None,
 };
 
 /// Corresponds to server's execution_version 5 (or v1.3)
@@ -99,6 +120,7 @@ const V5: ProtocolVersion = ProtocolVersion {
     zkos_wrapper: ZkOsWrapperVersion("v0.5.3"),
     bin_md5sum: BinMd5Sum("a2421384eb817ba2649f1438dc321d54"),
     program_commitment: None,
+    security_level: None,
 };
 
 /// Corresponds to server's execution_version 6 (or v1.3.1)
@@ -112,6 +134,7 @@ const V6: ProtocolVersion = ProtocolVersion {
     zkos_wrapper: ZkOsWrapperVersion("v0.5.4"),
     bin_md5sum: BinMd5Sum("e77ced130723f3e52099658d589a8454"),
     program_commitment: None,
+    security_level: None,
 };
 
 /// Corresponds to server's execution_version 7
@@ -125,12 +148,10 @@ const V7: ProtocolVersion = ProtocolVersion {
     zkos_wrapper: ZkOsWrapperVersion("v0.5.5"),
     bin_md5sum: BinMd5Sum("99d1618fdf63d80c4a6ed41cf21ed4d6"),
     program_commitment: None,
+    security_level: None,
 };
 
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
-///
-/// **100-bit security.** Both `program_commitment` and `vk_hash` are specific to that level;
-/// the 80-bit values for the same binary differ and are not interchangeable.
 const V8: ProtocolVersion = ProtocolVersion {
     // Keccak256 of the phase-3 SNARK VK (`generate-vk --check-aux-params`), so it binds the
     // app binary below. Regenerate when the binary, the level, or the pins change.
@@ -143,10 +164,12 @@ const V8: ProtocolVersion = ProtocolVersion {
     // zksync-os draft-0.4.0 @ 8ef47499, built reproducibly.
     bin_md5sum: BinMd5Sum("8128c18a3b7145366b184e027d0e0f34"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
+    // Specific to the 100-bit level below, like the vk_hash above.
     program_commitment: Some(ProgramCommitment([
         0xe8f4648b, 0xe3a0304a, 0x290c7e21, 0x4e01ba9b, 0x4b592017, 0x5ba66450, 0x1564424b,
         0x4cfb7283,
     ])),
+    security_level: Some(SecurityLevel::Security100),
 };
 
 /// Represents the set of supported protocol versions by this prover implementation.
@@ -189,5 +212,40 @@ impl SupportedProtocolVersions {
         self.versions
             .iter()
             .any(|v| v.program_commitment.as_ref() == Some(commitment))
+    }
+
+    /// The security level the prover process proves at: the one level shared by every
+    /// supported version that records one, `None` if no version records a level.
+    ///
+    /// The level is fixed per process — the provers and the combiner are configured with
+    /// it at construction, before any job (and its vk_hash) is known — so a version set
+    /// mixing levels cannot be served by one process. This panics on such a set rather
+    /// than silently picking a level; the set is a compile-time constant, so the panic
+    /// marks a broken edit of this file, not a runtime condition.
+    pub fn proving_security_level(&self) -> Option<SecurityLevel> {
+        let mut levels = self.versions.iter().filter_map(|v| v.security_level);
+        let first = levels.next()?;
+        assert!(
+            levels.all(|level| level == first),
+            "supported protocol versions record different proving security levels; \
+             one prover process cannot serve them all"
+        );
+        Some(first)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The getter panics on a mixed-level version set; catch that here instead of at
+    /// prover startup. Pinning the value also guards the V8+ constants against a level
+    /// edit that forgets to regenerate `program_commitment` and `vk_hash` with it.
+    #[test]
+    fn default_versions_share_one_proving_security_level() {
+        assert_eq!(
+            SupportedProtocolVersions::default().proving_security_level(),
+            Some(SecurityLevel::Security100)
+        );
     }
 }

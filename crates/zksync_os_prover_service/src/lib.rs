@@ -150,7 +150,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     // the FRI/SNARK phase alternation. Its caches build lazily on the first multi-proof
     // SNARK job rather than at startup, so a service that never sees multi-proof jobs
     // doesn't pin tens of gigabytes of host RAM for nothing.
-    let combiner = RefCell::new(zksync_os_snark_prover::create_combiner());
+    let combiner = RefCell::new(zksync_os_snark_prover::create_combiner()?);
 
     tracing::info!("Starting Zksync OS Prover Service");
 

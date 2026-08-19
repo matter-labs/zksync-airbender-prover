@@ -13,8 +13,6 @@ categories.workspace = true
 [dependencies]
 # internal dependencies
 protocol_version.workspace = true
-# for PROVING_SECURITY_LEVEL: the combiner must prove at the same level as the FRI prover
-zksync_os_fri_prover.workspace = true
 zksync_sequencer_proof_client.workspace = true
 
 # zksync-airbender dependencies
