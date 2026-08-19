@@ -147,6 +147,39 @@ fn carried_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment
     ProgramCommitment(words)
 }
 
+/// End params of the active security level's unified-recursion verifier binary, needed
+/// to continue a carried chain the way the next unified pass would. Derived once per
+/// process (one unified-layer setup computation on the host).
+fn unified_verifier_end_params() -> &'static [u32; 8] {
+    static EP: std::sync::OnceLock<[u32; 8]> = std::sync::OnceLock::new();
+    EP.get_or_init(|| zkos_wrapper::circuits::BinaryCommitment::default().end_params)
+}
+
+/// The program commitment this proof's verification OUTPUTS: its carried chain continued
+/// with the unified verifier's end params unless it already ends there — the same
+/// carry-or-continue rule `CarriedChainCombiner::combine` applies. A proof that converged
+/// on its first unified pass carries only the unrolled-level chain in registers 18..=25,
+/// one fold short of the recorded per-version commitment; a merged proof (or one that took
+/// a second unified pass) carries the full chain. Falls back to the raw carried value when
+/// the proof has no chain pair or it disagrees with the registers (the merge validates and
+/// rejects such proofs properly).
+fn output_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment {
+    let carried = carried_program_commitment(proof);
+    let (Some(hash), Some(preimage)) = (proof.recursion_chain_hash, proof.recursion_chain_preimage)
+    else {
+        return carried;
+    };
+    if hash != carried.0 {
+        return carried;
+    }
+    let (continued, _) = zksync_airbender_execution_utils::unrolled::UnrolledProgramSetup::continue_recursion_chain(
+        unified_verifier_end_params(),
+        &hash,
+        &preimage,
+    );
+    ProgramCommitment(continued)
+}
+
 /// Build the FRI-proof combiner used by [`merge_fris`] for multi-proof jobs.
 ///
 /// The combiner caches everything that survives across jobs — the unified recursion
@@ -385,17 +418,34 @@ pub async fn run_inner(
             if let Some(expected) =
                 supported_protocol_versions.program_commitment_for(&snark_proof_input.vk_hash)
             {
+                let single = snark_proof_input.fri_proofs.len() == 1;
                 for (i, proof) in snark_proof_input.fri_proofs.iter().enumerate() {
-                    let carried = carried_program_commitment(proof);
-                    if carried != expected {
+                    let output = output_program_commitment(proof);
+                    if output != expected {
                         tracing::error!(
-                            "FRI proof {i} of batches [{} to {}] from sequencer {} carries \
-                             program commitment {carried}, but protocol version {} proves \
+                            "FRI proof {i} of batches [{} to {}] from sequencer {} proves \
+                             program commitment {output}, but protocol version {} proves \
                              {expected}; skipping",
                             snark_proof_input.from_batch_number.0,
                             snark_proof_input.to_batch_number.0,
                             client.sequencer_url(),
                             snark_proof_input.vk_hash,
+                        );
+                        return Ok(false);
+                    }
+                    // A single-proof job skips the merge, so the wrapped proof's raw
+                    // registers 18..=25 (not the continued chain) meet check_aux_params.
+                    let carried = carried_program_commitment(proof);
+                    if single && carried != expected {
+                        tracing::error!(
+                            "single-proof SNARK job for batches [{} to {}]: the FRI proof \
+                             converged in one unified pass and carries the pre-merge chain \
+                             {carried} in registers 18..=25, but the wrapper VK constrains \
+                             them to {expected}; unprovable with the current VK — the job \
+                             needs >=2 FRI proofs (or the proof an extra unified pass); \
+                             skipping",
+                            snark_proof_input.from_batch_number.0,
+                            snark_proof_input.to_batch_number.0,
                         );
                         return Ok(false);
                     }
