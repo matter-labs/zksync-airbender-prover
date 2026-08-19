@@ -12,7 +12,7 @@ use anyhow::Context;
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
+use zksync_sequencer_proof_client::{RequestTimeouts, SequencerEndpoint, SequencerProofClient};
 
 pub mod metrics;
 
@@ -113,7 +113,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let clients = SequencerProofClient::new_clients(
         args.sequencer_urls,
         "prover_service".to_string(),
-        None,
+        RequestTimeouts::default(),
         supported_versions.vk_hashes(),
     )
     .context("failed to create sequencer proof clients")?;

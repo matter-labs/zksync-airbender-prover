@@ -14,7 +14,7 @@ use zksync_airbender_cli::prover_utils::{
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{
-    FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
+    FriJobInputs, ProofClient, RequestTimeouts, SequencerEndpoint, SequencerProofClient,
 };
 
 use crate::metrics::FRI_PROVER_METRICS;
@@ -58,9 +58,10 @@ pub struct Args {
     #[arg(long, default_value = "3124")]
     pub prometheus_port: u16,
 
-    /// Timeout for HTTP requests to sequencer in seconds. If no response is received within this time, the prover will exit.
-    #[arg(long, default_value = "2")]
-    pub request_timeout_secs: u64,
+    /// Overrides the backstop on a whole request, in seconds. A job download is bounded by
+    /// inactivity, so this only needs to change for a sequencer that is reachable but pathological.
+    #[arg(long)]
+    pub request_timeout_secs: Option<u64>,
 
     /// Name of the prover for identification in the sequencer's prover api
     #[arg(long, default_value = "unknown_prover")]
@@ -109,7 +110,10 @@ pub fn create_proof(
 }
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
-    let timeout = Duration::from_secs(args.request_timeout_secs);
+    let mut timeouts = RequestTimeouts::default();
+    if let Some(total) = args.request_timeout_secs {
+        timeouts.total = Some(Duration::from_secs(total));
+    }
 
     tracing::info!(
         "Creating {} sequencer proof clients for urls: {:?}",
@@ -123,7 +127,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let clients = SequencerProofClient::new_clients(
         args.sequencer_urls,
         args.prover_name,
-        Some(timeout),
+        timeouts,
         supported_versions.vk_hashes(),
     )
     .context("failed to create sequencer proof clients")?;
@@ -139,10 +143,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let prover = create_prover(&binary_path)?;
 
-    tracing::info!(
-        "Starting Zksync OS FRI prover with request timeout of {}s",
-        args.request_timeout_secs
-    );
+    tracing::info!(?timeouts, "Starting Zksync OS FRI prover");
 
     let mut proof_count = 0;
 
@@ -221,7 +222,6 @@ pub async fn run_inner(
                     "Timeout waiting for response from sequencer {}: {err}",
                     client.sequencer_url()
                 );
-                tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
                 return Ok(false);
             }
@@ -328,7 +328,6 @@ pub async fn run_inner(
                     client.sequencer_url(),
                     err
                 );
-                tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
             } else {
                 tracing::error!(

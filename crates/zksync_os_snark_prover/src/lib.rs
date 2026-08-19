@@ -338,7 +338,6 @@ pub async fn run_inner(
                     "Timeout waiting for response from sequencer {}: {e:?}",
                     client.sequencer_url()
                 );
-                tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
                 return Ok(false);
             }
@@ -462,7 +461,6 @@ pub async fn run_inner(
                     end_batch,
                     client.sequencer_url()
                 );
-                tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
             } else {
                 tracing::error!(

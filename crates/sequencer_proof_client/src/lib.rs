@@ -5,7 +5,7 @@ pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
 
 pub use sequencer_endpoint::SequencerEndpoint;
-pub use sequencer_proof_client::SequencerProofClient;
+pub use sequencer_proof_client::{RequestTimeouts, SequencerProofClient};
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
 use async_trait::async_trait;

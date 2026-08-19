@@ -5,7 +5,7 @@ use protocol_version::SupportedProtocolVersions;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use zksync_os_snark_prover::{init_tracing, metrics, run_linking_fri_snark};
-use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
+use zksync_sequencer_proof_client::{RequestTimeouts, SequencerEndpoint, SequencerProofClient};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -51,9 +51,11 @@ enum Commands {
         /// Port to run the Prometheus metrics server on
         #[arg(long, default_value = "3124")]
         prometheus_port: u16,
-        /// Timeout for HTTP requests to sequencer in seconds. If no response is received within this time, the prover will exit.
-        #[arg(long, default_value = "2")]
-        request_timeout_secs: u64,
+        /// Overrides the backstop on a whole request, in seconds. A job download is bounded by
+        /// inactivity, so this only needs to change for a sequencer that is reachable but
+        /// pathological.
+        #[arg(long)]
+        request_timeout_secs: Option<u64>,
         /// Disable ZK for SNARK proofs
         #[arg(long, default_value_t = false)]
         disable_zk: bool,
@@ -103,7 +105,10 @@ fn main() -> anyhow::Result<()> {
                     metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
                 });
 
-                let timeout = Duration::from_secs(request_timeout_secs);
+                let mut timeouts = RequestTimeouts::default();
+                if let Some(total) = request_timeout_secs {
+                    timeouts.total = Some(Duration::from_secs(total));
+                }
 
                 tracing::info!(
                     "Creating {} sequencer proof clients for urls: {:?}",
@@ -114,15 +119,12 @@ fn main() -> anyhow::Result<()> {
                 let clients = SequencerProofClient::new_clients(
                     sequencer_urls,
                     prover_name,
-                    Some(timeout),
+                    timeouts,
                     supported_versions.vk_hashes(),
                 )
                 .expect("failed to create sequencer proof clients");
 
-                tracing::info!(
-                    "Starting zksync_os_snark_prover with request timeout of {}s",
-                    request_timeout_secs
-                );
+                tracing::info!(?timeouts, "Starting zksync_os_snark_prover");
 
                 // The proving chain is synchronous and stack-hungry; drive it from a
                 // runtime blocking thread (which gets the explicit stack size above)

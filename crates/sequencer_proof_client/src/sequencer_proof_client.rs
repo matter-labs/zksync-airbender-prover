@@ -16,6 +16,28 @@ use reqwest::StatusCode;
 use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 
+/// A job download can be hundreds of MB, so requests are bounded by inactivity rather than by a
+/// deadline that would have to scale with the payload.
+#[derive(Debug, Clone, Copy)]
+pub struct RequestTimeouts {
+    pub connect: Duration,
+    /// Reset by every response body frame, so a download that keeps progressing is never cut off.
+    /// Not reset while waiting for the response head.
+    pub read: Duration,
+    /// Backstop for a transfer that progresses but never ends.
+    pub total: Option<Duration>,
+}
+
+impl Default for RequestTimeouts {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(5),
+            read: Duration::from_secs(10),
+            total: Some(Duration::from_secs(600)),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SequencerProofClient {
     client: reqwest::Client,
@@ -30,7 +52,6 @@ impl SequencerProofClient {
     /// # Arguments
     /// * `endpoint` - The sequencer endpoint (URL + optional credentials)
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
-    /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     /// * `supported_vk_hashes` - VK hashes this prover supports; sent on pick requests so the
     ///   sequencer only assigns jobs of these versions. Empty means no declaration - the
     ///   sequencer will offer jobs of any version.
@@ -40,7 +61,7 @@ impl SequencerProofClient {
     pub fn new(
         endpoint: SequencerEndpoint,
         prover_name: String,
-        timeout: Option<Duration>,
+        timeouts: RequestTimeouts,
         supported_vk_hashes: Vec<String>,
     ) -> anyhow::Result<Self> {
         let mut headers = HeaderMap::new();
@@ -62,11 +83,14 @@ impl SequencerProofClient {
             );
         }
 
-        let client = reqwest::Client::builder()
-            .timeout(timeout.unwrap_or(Duration::from_secs(2)))
-            .default_headers(headers)
-            .build()
-            .context("Failed to build reqwest client")?;
+        let mut builder = reqwest::Client::builder()
+            .connect_timeout(timeouts.connect)
+            .read_timeout(timeouts.read)
+            .default_headers(headers);
+        if let Some(total) = timeouts.total {
+            builder = builder.timeout(total);
+        }
+        let client = builder.build().context("Failed to build reqwest client")?;
 
         Ok(Self {
             client,
@@ -81,7 +105,6 @@ impl SequencerProofClient {
     /// # Arguments
     /// * `endpoints` - A vector of sequencer endpoints
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
-    /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
     /// * `supported_vk_hashes` - VK hashes this prover supports; sent on pick requests so the
     ///   sequencer only assigns jobs of these versions. Empty means no declaration - the
     ///   sequencer will offer jobs of any version.
@@ -92,7 +115,7 @@ impl SequencerProofClient {
     pub fn new_clients(
         endpoints: Vec<SequencerEndpoint>,
         prover_name: String,
-        timeout: Option<Duration>,
+        timeouts: RequestTimeouts,
         supported_vk_hashes: Vec<String>,
     ) -> anyhow::Result<Vec<Box<dyn ProofClient + Send + Sync>>> {
         if endpoints.is_empty() {
@@ -107,7 +130,7 @@ impl SequencerProofClient {
                 let client = SequencerProofClient::new(
                     endpoint,
                     prover_name.clone(),
-                    timeout,
+                    timeouts,
                     supported_vk_hashes.clone(),
                 )
                 .with_context(|| {
@@ -398,8 +421,13 @@ mod tests {
     fn test_client_strips_credentials() {
         let endpoint = SequencerEndpoint::parse("http://user:password123@localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
-            .expect("failed to create client");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "test_prover".to_string(),
+            RequestTimeouts::default(),
+            vec![],
+        )
+        .expect("failed to create client");
 
         // URL should be clean (no credentials)
         let url = client.sequencer_url();
@@ -411,8 +439,13 @@ mod tests {
     #[test]
     fn test_pick_query_without_supported_vk_hashes() {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
-            .expect("failed to create client");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "test_prover".to_string(),
+            RequestTimeouts::default(),
+            vec![],
+        )
+        .expect("failed to create client");
 
         assert_eq!(client.pick_query(), "id=test_prover");
     }
@@ -423,7 +456,7 @@ mod tests {
         let client = SequencerProofClient::new(
             endpoint,
             "test_prover".to_string(),
-            None,
+            RequestTimeouts::default(),
             vec!["0xaaaa".to_string(), "0xbbbb".to_string()],
         )
         .expect("failed to create client");
@@ -434,12 +467,47 @@ mod tests {
         );
     }
 
+    /// The FRI prover counts `fri_prover_timeout_errors` by asking `reqwest::Error::is_timeout()`,
+    /// so a read timeout has to keep answering yes.
+    #[tokio::test]
+    async fn read_timeout_is_reported_as_a_timeout() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let _accepted = listener.accept();
+            std::thread::park();
+        });
+
+        let client = SequencerProofClient::new(
+            SequencerEndpoint::parse(&format!("http://{addr}")).unwrap(),
+            "test_prover".to_string(),
+            RequestTimeouts {
+                read: Duration::from_millis(200),
+                ..Default::default()
+            },
+            vec![],
+        )
+        .expect("failed to create client");
+
+        let err = client.pick_fri_job().await.expect_err("must time out");
+        assert!(
+            err.downcast_ref::<reqwest::Error>()
+                .is_some_and(reqwest::Error::is_timeout),
+            "{err:#}"
+        );
+    }
+
     #[test]
     fn test_client_without_credentials() {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
-            .expect("failed to create client");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "test_prover".to_string(),
+            RequestTimeouts::default(),
+            vec![],
+        )
+        .expect("failed to create client");
 
         let url = client.sequencer_url();
         assert_eq!(url.as_str(), "http://localhost:3124/");
