@@ -172,11 +172,12 @@ fn output_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment 
     if hash != carried.0 {
         return carried;
     }
-    let (continued, _) = zksync_airbender_execution_utils::unrolled::UnrolledProgramSetup::continue_recursion_chain(
-        unified_verifier_end_params(),
-        &hash,
-        &preimage,
-    );
+    let (continued, _) =
+        zksync_airbender_execution_utils::unrolled::UnrolledProgramSetup::continue_recursion_chain(
+            unified_verifier_end_params(),
+            &hash,
+            &preimage,
+        );
     ProgramCommitment(continued)
 }
 
