@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.9.0](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.8.2...v0.9.0) (2026-08-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* V8 program binding, 100-bit proving, zksync-os v0.4.0 binary ([#153](https://github.com/matter-labs/zksync-airbender-prover/issues/153))
+* update prover stack for v8  ([#137](https://github.com/matter-labs/zksync-airbender-prover/issues/137))
+
+### Features
+
+* update prover stack for v8  ([#137](https://github.com/matter-labs/zksync-airbender-prover/issues/137)) ([f6d4c99](https://github.com/matter-labs/zksync-airbender-prover/commit/f6d4c996c6394848476c34508187521a2879e27c))
+* V8 program binding, 100-bit proving, zksync-os v0.4.0 binary ([#153](https://github.com/matter-labs/zksync-airbender-prover/issues/153)) ([ea89b32](https://github.com/matter-labs/zksync-airbender-prover/commit/ea89b3256bc2c1dd6ee8df8ce95cffcdc3eb51ad))
+
+
+### Bug Fixes
+
+* widen and simplify prover duration histogram buckets ([#151](https://github.com/matter-labs/zksync-airbender-prover/issues/151)) ([43c9fb1](https://github.com/matter-labs/zksync-airbender-prover/commit/43c9fb1ded92227c1256531f604fba023a9cefa5))
+
 ## [0.8.2](https://github.com/matter-labs/zksync-airbender-prover/compare/v0.8.1...v0.8.2) (2026-07-22)
 
 
