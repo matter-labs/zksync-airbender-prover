@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
@@ -45,6 +46,11 @@ enum Commands {
         sequencer_urls: Vec<SequencerEndpoint>,
         #[clap(flatten)]
         setup: SetupOptions,
+        /// Path to `app.bin` bound into the SNARK VK (its `.text` sibling is derived).
+        /// Must be the same binary the FRI provers run. Defaults to the repo's
+        /// `multiblock_batch.bin`.
+        #[arg(long)]
+        app_bin_path: Option<PathBuf>,
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
         #[arg(long)]
         iterations: Option<usize>,
@@ -90,12 +96,18 @@ fn main() -> anyhow::Result<()> {
                     output_dir,
                     trusted_setup_file,
                 },
+            app_bin_path,
             iterations,
             prometheus_port,
             request_timeout_secs,
             disable_zk,
             prover_name,
         } => {
+            // Default to the repo's app binary, mirroring the FRI prover / prover service.
+            let manifest_path =
+                std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+            let app_bin_path = app_bin_path
+                .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
             let (stop_sender, stop_receiver) = watch::channel(false);
 
             runtime.block_on(async move {
@@ -133,6 +145,7 @@ fn main() -> anyhow::Result<()> {
                         clients,
                         output_dir,
                         trusted_setup_file,
+                        app_bin_path,
                         iterations,
                         disable_zk,
                     ))

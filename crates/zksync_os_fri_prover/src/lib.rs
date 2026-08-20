@@ -7,10 +7,11 @@ use anyhow::Context as _;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
-use protocol_version::SupportedProtocolVersions;
+use protocol_version::{ProgramCommitment, SupportedProtocolVersions};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
     serialize_to_file, ProgramProver, ProgramProverConfig, ProgramSource, ProofTarget,
+    SecurityLevel,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{
@@ -72,6 +73,21 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
+/// The level this process proves at, from the supported protocol versions' record,
+/// mapped to airbender's type. Every stage must agree on it — the FRI prover here, the
+/// combiner and the SNARK wrapper in `zksync_os_snark_prover` (which maps the same
+/// record) — since it selects the recursion verifier binaries. Errors if no supported
+/// version records a level.
+fn proving_security_level() -> anyhow::Result<SecurityLevel> {
+    let level = SupportedProtocolVersions::default()
+        .proving_security_level()
+        .context("no supported protocol version records a proving security level")?;
+    Ok(match level {
+        protocol_version::SecurityLevel::Security80 => SecurityLevel::Security80,
+        protocol_version::SecurityLevel::Security100 => SecurityLevel::Security100,
+    })
+}
+
 /// Create a new prover for the given program binary.
 ///
 /// The prover holds all precomputed setup data (and, with the `gpu` feature, the GPU
@@ -92,9 +108,29 @@ pub fn create_prover(binary_path: &Path) -> anyhow::Result<ProgramProver> {
     let config = ProgramProverConfig {
         // Recursion up to the unified layer: the compact form expected by the SNARK wrapper.
         target: ProofTarget::RecursionUnified,
+        // The level changes the recursion chain, and so the program commitment and the VK -
+        // not a knob that can be flipped independently of those constants.
+        security_level: proving_security_level()?,
+        // `gpu` defaults to `GpuMemoryPreset::Auto`: 28 GiB arena, falling back to 21.5 GiB.
         ..Default::default()
     };
     ProgramProver::new(source, config).map_err(|e| anyhow::anyhow!("failed to create prover: {e}"))
+}
+
+/// Compute the [`ProgramCommitment`] of the app program at `binary_path` (`.text`
+/// sibling derived like [`create_prover`] does).
+///
+/// Uses zkos-wrapper's own `BinaryCommitment`, so the value is byte-identical to what
+/// the wrapper chain enforces — but that recomputes the program's setup caps, which
+/// takes on the order of a minute. Call once at startup.
+///
+/// The app program commitment, read off the prover's own setups (a map lookup).
+///
+/// Previously recomputed from the binary via `BinaryCommitment::from_base_binary`, which
+/// rebuilt all three setups (~159s on an L4) right before `create_prover` derived them again.
+/// `None` on the CPU backend.
+pub fn program_commitment(prover: &ProgramProver) -> Option<ProgramCommitment> {
+    prover.program_commitment().map(ProgramCommitment)
 }
 
 pub fn create_proof(
@@ -137,7 +173,19 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let binary_path = args
         .app_bin_path
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
+
     let prover = create_prover(&binary_path)?;
+
+    // Fail fast on a binary no supported version proves. Free now, so it runs after
+    // construction rather than before it.
+    let program_commitment = program_commitment(&prover)
+        .context("program commitment unavailable (CPU backend); cannot verify the app binary")?;
+    tracing::info!("App program commitment: {program_commitment}");
+    anyhow::ensure!(
+        supported_versions.supports_program(&program_commitment),
+        "program {binary_path:?} (commitment {program_commitment}) is not proven by any \
+         supported protocol version"
+    );
 
     tracing::info!(
         "Starting Zksync OS FRI prover with request timeout of {}s",
@@ -161,6 +209,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             &prover,
             args.path.clone(),
             &supported_versions,
+            &program_commitment,
         )
         .await
         .expect("Failed to run FRI prover");
@@ -204,6 +253,7 @@ pub async fn run_inner(
     prover: &ProgramProver,
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
+    program_commitment: &ProgramCommitment,
 ) -> anyhow::Result<bool> {
     let FriJobInputs {
         batch_number,
@@ -238,6 +288,21 @@ pub async fn run_inner(
                     fri_job_input.vk_hash,
                     fri_job_input.batch_number,
                     client.sequencer_url()
+                );
+                return Ok(false);
+            }
+            // The job's version must prove the loaded program — a mismatched proof
+            // would be rejected downstream, after the GPU time is spent.
+            let expected = supported_versions.program_commitment_for(&fri_job_input.vk_hash);
+            if expected != Some(*program_commitment) {
+                tracing::error!(
+                    "Protocol version with vk_hash {} for batch number {} from sequencer {} \
+                     proves a different app program (version's commitment: {}, loaded binary: \
+                     {program_commitment})",
+                    fri_job_input.vk_hash,
+                    fri_job_input.batch_number,
+                    client.sequencer_url(),
+                    expected.map_or_else(|| "none".to_string(), |c| c.to_string()),
                 );
                 return Ok(false);
             }

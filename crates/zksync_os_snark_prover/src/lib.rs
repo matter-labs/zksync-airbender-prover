@@ -1,5 +1,6 @@
-use protocol_version::SupportedProtocolVersions;
-use std::path::Path;
+use anyhow::Context as _;
+use protocol_version::{ProgramCommitment, SupportedProtocolVersions};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{
@@ -10,8 +11,8 @@ use zksync_airbender_cli::prover_utils::CpuConfig;
 #[cfg(feature = "gpu")]
 use zksync_airbender_cli::prover_utils::GpuConfig;
 use zksync_airbender_cli::prover_utils::{
-    CarriedChainCombiner, ProgramProverConfig, ProofArtifact, ProofCounts, ProofTarget,
-    ProofTimingsMs, ProverBackend,
+    CarriedChainCombiner, ProgramSource, ProofArtifact, ProofCounts, ProofTarget, ProofTimingsMs,
+    ProverBackend, SecurityLevel,
 };
 use zksync_airbender_execution_utils::unrolled::UnrolledProgramProof;
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
@@ -44,6 +45,10 @@ pub enum WrapperSource {
     /// rebuild the wrapper from the cache in negligible time.
     PerJob {
         trusted_setup_file: String,
+        /// App binary whose commitment is bound into the wrapper VK via
+        /// `check_aux_params` (see [`create_snark_wrapper`]). Only consumed on the
+        /// cache-less first build; later builds restore it from `host_cache`.
+        app_bin_path: PathBuf,
         /// Setup caches carried between jobs; `None` until the first job's wrapper is
         /// retired. Holds no GPU memory (see [`SnarkWrapperHostCache`]).
         host_cache: Option<Box<SnarkWrapperHostCache>>,
@@ -52,29 +57,39 @@ pub enum WrapperSource {
 
 /// Build the SNARK wrapper session used for proving and VK generation.
 ///
-/// The wrapper is constructed without an explicit binary: the verification keys bind the
-/// wrapper chain over zkos-wrapper's embedded unified recursion verifier binary, and the
-/// app binary is bound through the recursion chain carried inside the FRI proof itself.
-pub fn create_snark_wrapper(trusted_setup_file: String) -> anyhow::Result<SnarkWrapper> {
-    create_snark_wrapper_with_cache(trusted_setup_file, None)
+/// The wrapper runs with `check_aux_params` enabled, which binds the app program into the
+/// verification key: the RISC-wrapper circuit constrains the FRI proof's final registers
+/// 18..=25 (the blake2s recursion-chain commitment of the app binary) to the `aux_params`
+/// derived from `app_bin_path`, and takes the settlement public input directly from
+/// registers 10..=16. A FRI proof of any other program then fails the in-circuit check
+/// instead of producing a wrappable proof, so a wrong-program proof can no longer be
+/// wrapped into a valid SNARK.
+///
+/// Because the commitment is a circuit constant, the VK is app-specific: it must be
+/// regenerated — and the new hash re-registered on L1 and re-published by the sequencer —
+/// whenever the app binary changes.
+pub fn create_snark_wrapper(
+    trusted_setup_file: String,
+    app_bin_path: &Path,
+) -> anyhow::Result<SnarkWrapper> {
+    create_snark_wrapper_with_cache(trusted_setup_file, app_bin_path, None)
 }
 
 /// Like [`create_snark_wrapper`], but adopt the setup caches of a retired wrapper
 /// (see [`SnarkWrapper::into_host_cache`]) so the chain derivation is skipped.
 ///
 /// The cache carries the retired session's whole configuration, including its trusted
-/// setup path, so `trusted_setup_file` only applies to cache-less (first) builds.
+/// setup path and bound app binary, so `trusted_setup_file` and `app_bin_path` only apply
+/// to cache-less (first) builds.
 pub fn create_snark_wrapper_with_cache(
     trusted_setup_file: String,
+    app_bin_path: &Path,
     host_cache: Option<SnarkWrapperHostCache>,
 ) -> anyhow::Result<SnarkWrapper> {
     #[cfg_attr(not(feature = "gpu"), allow(unused_mut))]
     let mut wrapper = match host_cache {
         Some(cache) => SnarkWrapper::from_host_cache(cache)?,
-        None => SnarkWrapper::new(SnarkWrapperConfig {
-            trusted_setup: Some(trusted_setup_file.into()),
-            ..Default::default()
-        })?,
+        None => SnarkWrapper::new(build_wrapper_config(trusted_setup_file, app_bin_path)?)?,
     };
 
     // Mirror the old eager GPU precomputation: derive the full VK/setup chain up front so
@@ -91,6 +106,81 @@ pub fn create_snark_wrapper_with_cache(
     Ok(wrapper)
 }
 
+/// Build the wrapper config that binds the app program at `app_bin_path` into the VK via
+/// `check_aux_params`.
+///
+/// The `.text` section path is derived from the `.bin` path exactly as the FRI prover does
+/// ([`ProgramSource::from_paths`]), so the `aux_params` the wrapper bakes in are computed
+/// over the same binary the FRI proof executed and match the commitment it carries in
+/// registers 18..=25.
+fn build_wrapper_config(
+    trusted_setup_file: String,
+    app_bin_path: &Path,
+) -> anyhow::Result<SnarkWrapperConfig> {
+    let bin_path = app_bin_path
+        .to_str()
+        .with_context(|| format!("non-UTF8 app binary path {app_bin_path:?}"))?
+        .to_string();
+    let source = ProgramSource::from_paths(bin_path, None);
+    // Fail fast on a missing binary/text instead of erroring deep in VK derivation.
+    for path in [&source.bin_path, &source.text_path] {
+        anyhow::ensure!(Path::new(path).is_file(), "program file not found: {path}");
+    }
+    Ok(SnarkWrapperConfig {
+        trusted_setup: Some(trusted_setup_file.into()),
+        bin: Some(source.bin_path.into()),
+        text: Some(source.text_path.into()),
+        check_aux_params: true,
+        ..Default::default()
+    })
+}
+
+/// The app-program chain commitment a FRI proof (combined multi-batch ones included)
+/// carries in its final registers 18..=25 — the value the settlement side checks the
+/// SNARK public input against. NOT the proof's `recursion_chain_hash`, which is the
+/// prover-internal layer chain and varies with the number of unified passes.
+fn carried_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment {
+    let mut words = [0u32; 8];
+    for (i, word) in words.iter_mut().enumerate() {
+        *word = proof.register_final_values[18 + i].value;
+    }
+    ProgramCommitment(words)
+}
+
+/// End params of the active security level's unified-recursion verifier binary, needed
+/// to continue a carried chain the way the next unified pass would. Derived once per
+/// process (one unified-layer setup computation on the host).
+fn unified_verifier_end_params() -> &'static [u32; 8] {
+    static EP: std::sync::OnceLock<[u32; 8]> = std::sync::OnceLock::new();
+    EP.get_or_init(|| zkos_wrapper::circuits::BinaryCommitment::default().end_params)
+}
+
+/// The program commitment this proof's verification OUTPUTS: its carried chain continued
+/// with the unified verifier's end params unless it already ends there — the same
+/// carry-or-continue rule `CarriedChainCombiner::combine` applies. A proof that converged
+/// on its first unified pass carries only the unrolled-level chain in registers 18..=25,
+/// one fold short of the recorded per-version commitment; a merged proof (or one that took
+/// a second unified pass) carries the full chain. Falls back to the raw carried value when
+/// the proof has no chain pair or it disagrees with the registers (the merge validates and
+/// rejects such proofs properly).
+fn output_program_commitment(proof: &UnrolledProgramProof) -> ProgramCommitment {
+    let carried = carried_program_commitment(proof);
+    let (Some(hash), Some(preimage)) = (proof.recursion_chain_hash, proof.recursion_chain_preimage)
+    else {
+        return carried;
+    };
+    if hash != carried.0 {
+        return carried;
+    }
+    let (continued, _) =
+        zksync_airbender_execution_utils::unrolled::UnrolledProgramSetup::continue_recursion_chain(
+            unified_verifier_end_params(),
+            &hash,
+            &preimage,
+        );
+    ProgramCommitment(continued)
+}
+
 /// Build the FRI-proof combiner used by [`merge_fris`] for multi-proof jobs.
 ///
 /// The combiner caches everything that survives across jobs — the unified recursion
@@ -102,18 +192,39 @@ pub fn create_snark_wrapper_with_cache(
 /// The caches build lazily on the first multi-proof job; call
 /// [`CarriedChainCombiner::warm_up`] to pay that cost at startup instead. Note the GPU
 /// host state pins tens of gigabytes of host RAM for the lifetime of the combiner.
-pub fn create_combiner() -> CarriedChainCombiner {
-    // The security level is trusted caller input for the combine; use the level
-    // the FRI prover proves at (its `ProgramProverConfig::default()`).
-    let security_level = ProgramProverConfig::default().security_level;
+pub fn create_combiner() -> anyhow::Result<CarriedChainCombiner> {
+    // Must match the level the FRI prover proves at - the level selects the recursion
+    // verifier binaries, so a mismatch produces proofs the combine cannot verify. Both
+    // map the same per-version record, so they cannot drift apart.
+    let security_level = proving_security_level()?;
     #[cfg(feature = "gpu")]
     {
-        CarriedChainCombiner::new_gpu(security_level, GpuConfig::default())
+        Ok(CarriedChainCombiner::new_gpu(
+            security_level,
+            GpuConfig::default(),
+        ))
     }
     #[cfg(not(feature = "gpu"))]
     {
-        CarriedChainCombiner::new_cpu(security_level, CpuConfig::default())
+        Ok(CarriedChainCombiner::new_cpu(
+            security_level,
+            CpuConfig::default(),
+        ))
     }
+}
+
+/// The level this process proves at, from the supported protocol versions' record,
+/// mapped to airbender's type — the same mapping `zksync_os_fri_prover` applies (kept
+/// as two four-line matches rather than a crate dependency between the two provers).
+/// Errors if no supported version records a level.
+fn proving_security_level() -> anyhow::Result<SecurityLevel> {
+    let level = SupportedProtocolVersions::default()
+        .proving_security_level()
+        .context("no supported protocol version records a proving security level")?;
+    Ok(match level {
+        protocol_version::SecurityLevel::Security80 => SecurityLevel::Security80,
+        protocol_version::SecurityLevel::Security100 => SecurityLevel::Security100,
+    })
 }
 
 /// Merge the job's FRI proofs into the single unified-layer proof the SNARK wrapper expects.
@@ -226,6 +337,7 @@ pub async fn run_linking_fri_snark(
     clients: Vec<Box<dyn ProofClient + Send + Sync>>,
     output_dir: String,
     trusted_setup_file: String,
+    app_bin_path: PathBuf,
     iterations: Option<usize>,
     disable_zk: bool,
 ) -> anyhow::Result<()> {
@@ -242,12 +354,14 @@ pub async fn run_linking_fri_snark(
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    let mut wrapper_source =
-        WrapperSource::Resident(Box::new(create_snark_wrapper(trusted_setup_file)?));
+    let mut wrapper_source = WrapperSource::Resident(Box::new(create_snark_wrapper(
+        trusted_setup_file,
+        &app_bin_path,
+    )?));
 
     // Warm the combiner eagerly, mirroring the SNARK precomputation above: setup
     // problems surface at startup and the first multi-proof job doesn't pay for it.
-    let mut combiner = create_combiner();
+    let mut combiner = create_combiner()?;
     combiner.warm_up();
 
     SNARK_PROVER_METRICS
@@ -319,6 +433,46 @@ pub async fn run_inner(
                 );
                 return Ok(false);
             }
+            // Reject wrong-program proofs up front with a clear error. The wrapper VK now
+            // binds the app program (check_aux_params constrains registers 18..=25 to the
+            // version's commitment), so such a proof would otherwise fail deep in wrap
+            // proving as an unsatisfiable circuit, after the GPU time is already spent.
+            if let Some(expected) =
+                supported_protocol_versions.program_commitment_for(&snark_proof_input.vk_hash)
+            {
+                let single = snark_proof_input.fri_proofs.len() == 1;
+                for (i, proof) in snark_proof_input.fri_proofs.iter().enumerate() {
+                    let output = output_program_commitment(proof);
+                    if output != expected {
+                        tracing::error!(
+                            "FRI proof {i} of batches [{} to {}] from sequencer {} proves \
+                             program commitment {output}, but protocol version {} proves \
+                             {expected}; skipping",
+                            snark_proof_input.from_batch_number.0,
+                            snark_proof_input.to_batch_number.0,
+                            client.sequencer_url(),
+                            snark_proof_input.vk_hash,
+                        );
+                        return Ok(false);
+                    }
+                    // A single-proof job skips the merge, so the wrapped proof's raw
+                    // registers 18..=25 (not the continued chain) meet check_aux_params.
+                    let carried = carried_program_commitment(proof);
+                    if single && carried != expected {
+                        tracing::error!(
+                            "single-proof SNARK job for batches [{} to {}]: the FRI proof \
+                             converged in one unified pass and carries the pre-merge chain \
+                             {carried} in registers 18..=25, but the wrapper VK constrains \
+                             them to {expected}; unprovable with the current VK — the job \
+                             needs >=2 FRI proofs (or the proof an extra unified pass); \
+                             skipping",
+                            snark_proof_input.from_batch_number.0,
+                            snark_proof_input.to_batch_number.0,
+                        );
+                        return Ok(false);
+                    }
+                }
+            }
             snark_proof_input
         }
         Ok(None) => {
@@ -380,12 +534,13 @@ pub async fn run_inner(
         WrapperSource::Resident(wrapper) => wrapper,
         WrapperSource::PerJob {
             trusted_setup_file,
+            app_bin_path,
             host_cache,
         } => {
             tracing::info!("Building per-job SNARK wrapper");
             let cache = host_cache.take().map(|cache| *cache);
             per_job_wrapper = Some(stats.measure_step(SnarkStage::WrapperSetup, || {
-                create_snark_wrapper_with_cache(trusted_setup_file.clone(), cache)
+                create_snark_wrapper_with_cache(trusted_setup_file.clone(), app_bin_path, cache)
             })?);
             per_job_wrapper.as_mut().expect("wrapper was just built")
         }
