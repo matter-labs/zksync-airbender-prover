@@ -28,23 +28,17 @@ zksync_os_fri_prover = { path = "crates/zksync_os_fri_prover" }
 # zksync-airbender dependencies
 # NOTE: the URL form and ref must match the ones used by zkos-wrapper so that
 # cargo unifies the git source instead of building two copies of the airbender crates.
-# v0.6.0-rc.2 = rc.1 plus matter-labs/zksync-airbender#378
-# (`ProgramProver::program_commitment()`), which this workspace uses.
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.2" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender", tag = "v0.6.0-rc.2" }
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender-private.git", branch = "fix/87680-fri-fix-dev" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender-private.git", branch = "fix/87680-fri-fix-dev" }
 
 # zkos-wrapper dependencies
-# v0.6.0-rc.2 = rc.1 plus matter-labs/zkos-wrapper#77 (fold the unified layer into
-# `BinaryCommitment::aux_params`), on airbender v0.6.0-rc.2 like the pins above.
 # Level stated explicitly, not inherited from the wrapper's default, so it can't drift out
 # of lockstep with `PROVING_SECURITY_LEVEL`.
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper.git", tag = "v0.6.0-rc.2", default-features = false, features = ["security_100"] }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper-private.git", branch = "fix/87680-fri-fix-dev", default-features = false, features = ["security_100"] }
 
 # zksync-crypto dependencies
-# NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps
-# (not yet released to crates.io in a version compatible with zkos-wrapper dev).
-# TODO: Once zksync-crypto is released to crates.io - switch to using the crates.io version instead of the git version.
-crypto_codegen = { package = "zksync_solidity_vk_codegen", git = "https://github.com/matter-labs/zksync-crypto.git", branch = "oh_for_wrapper" }
+# NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps.
+crypto_codegen = { package = "zksync_solidity_vk_codegen", git = "https://github.com/matter-labs/zksync-crypto-private.git", branch = "fix/87680-fri-fix-oh-for-wrapper" }
 
 # external dependencies
 anyhow = "1.0.103"

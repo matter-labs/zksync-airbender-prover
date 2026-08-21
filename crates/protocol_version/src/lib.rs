@@ -151,20 +151,22 @@ const V7: ProtocolVersion = ProtocolVersion {
     security_level: None,
 };
 
-/// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
+/// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.5.0 native batch prover)
 const V8: ProtocolVersion = ProtocolVersion {
     // Keccak256 of the phase-3 SNARK VK (`generate-vk --check-aux-params`), so it binds the
     // app binary below. Regenerate when the binary, the level, or the pins change.
+    // TODO(vk-regen): stale - regenerate for the v0.5.0 binary and the fix/87680 pins.
     vk_hash: VerificationKeyHash(
         "0x9f7576b911e7d3f528d49f894208682c81800814db9e3beac7fc3b1c4d626e7a",
     ),
-    airbender_version: AirbenderVersion("v0.6.0-rc.2"),
-    zksync_os_version: ZkSyncOSVersion("v0.4.0"),
-    zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.2"),
-    // zksync-os v0.4.0 release tag (@ 69bc4305), built reproducibly.
-    bin_md5sum: BinMd5Sum("31cb9cb3b42d4a183fb858594eeb8706"),
+    airbender_version: AirbenderVersion("fix/87680-fri-fix-dev @ 5b59f763"),
+    zksync_os_version: ZkSyncOSVersion("v0.5.0"),
+    zkos_wrapper: ZkOsWrapperVersion("fix/87680-fri-fix-dev @ a2d00237"),
+    // zksync-os v0.5.0 release tag (@ 20fdb610), built reproducibly.
+    bin_md5sum: BinMd5Sum("2d4fb2f9c75918d60605437c0d2a1ff7"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
     // Specific to the 100-bit level below, like the vk_hash above.
+    // TODO(vk-regen): stale - regenerate together with vk_hash.
     program_commitment: Some(ProgramCommitment([
         0xad042447, 0x3747a5ec, 0xba3294e4, 0xde778e30, 0x5b433c2c, 0x27948140, 0x84ccda7a,
         0xc817312d,
