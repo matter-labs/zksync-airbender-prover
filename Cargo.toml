@@ -58,6 +58,21 @@ vise = "0.3.2"
 vise-exporter = "0.3.2"
 url = "2.5"
 
+# zksync-protocol (via zksync-crypto-gpu) pins these crates to the public
+# `oh_for_wrapper` branch. Override that source at the workspace root so the
+# GPU graph uses the same private FRI-fix branch as zkos-wrapper.
+[patch."https://github.com/matter-labs/zksync-crypto"]
+boojum = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+zksync_bellman = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+franklin-crypto = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+rescue_poseidon = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+snark_wrapper = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+zksync_ff = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+zksync_ff_derive = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+zksync_pairing = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+zksync_cs_derive = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+fflonk = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+
 # Things below are to guarantee that we can compile in reasonable time.
 # Once we do some optimizations to the zkos-wrapper and compression verifier, we'll be able to remove some of them.
 
