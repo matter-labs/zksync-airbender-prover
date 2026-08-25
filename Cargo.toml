@@ -28,17 +28,17 @@ zksync_os_fri_prover = { path = "crates/zksync_os_fri_prover" }
 # zksync-airbender dependencies
 # NOTE: the URL form and ref must match the ones used by zkos-wrapper so that
 # cargo unifies the git source instead of building two copies of the airbender crates.
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender-private.git", branch = "fix/87680-fri-fix-dev" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender-private.git", branch = "fix/87680-fri-fix-dev" }
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/matter-labs/zksync-airbender-private.git", branch = "di/fix/87680-fri-fix-dev" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/matter-labs/zksync-airbender-private.git", branch = "di/fix/87680-fri-fix-dev" }
 
 # zkos-wrapper dependencies
 # Level stated explicitly, not inherited from the wrapper's default, so it can't drift out
 # of lockstep with `PROVING_SECURITY_LEVEL`.
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper-private.git", branch = "fix/87680-fri-fix-dev", default-features = false, features = ["security_100"] }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/matter-labs/zkos-wrapper-private.git", branch = "di/fix/87680-fri-fix-dev", default-features = false, features = ["security_100"] }
 
 # zksync-crypto dependencies
 # NOTE: must use the same source spec as zkos-wrapper so cargo unifies the git deps.
-crypto_codegen = { package = "zksync_solidity_vk_codegen", git = "https://github.com/matter-labs/zksync-crypto-private.git", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+crypto_codegen = { package = "zksync_solidity_vk_codegen", git = "https://github.com/matter-labs/zksync-crypto-private.git", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
 
 # external dependencies
 anyhow = "1.0.103"
@@ -61,17 +61,17 @@ url = "2.5"
 # zksync-protocol (via zksync-crypto-gpu) pins these crates to the public
 # `oh_for_wrapper` branch. Override that source at the workspace root so the
 # GPU graph uses the same private FRI-fix branch as zkos-wrapper.
-[patch."https://github.com/matter-labs/zksync-crypto"]
-boojum = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-zksync_bellman = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-franklin-crypto = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-rescue_poseidon = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-snark_wrapper = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-zksync_ff = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-zksync_ff_derive = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-zksync_pairing = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-zksync_cs_derive = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
-fflonk = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "fix/87680-fri-fix-oh-for-wrapper" }
+[patch.crates-io]
+boojum = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+zksync_bellman = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+franklin-crypto = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+rescue_poseidon = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+snark_wrapper = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+zksync_ff = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+zksync_ff_derive = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+zksync_pairing = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+zksync_cs_derive = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
+fflonk = { git = "https://github.com/matter-labs/zksync-crypto-private", branch = "di/fix/87680-fri-fix-oh-for-wrapper" }
 
 # Things below are to guarantee that we can compile in reasonable time.
 # Once we do some optimizations to the zkos-wrapper and compression verifier, we'll be able to remove some of them.
