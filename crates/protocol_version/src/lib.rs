@@ -155,21 +155,23 @@ const V7: ProtocolVersion = ProtocolVersion {
 const V8: ProtocolVersion = ProtocolVersion {
     // Keccak256 of the phase-3 SNARK VK (`generate-vk --check-aux-params`), so it binds the
     // app binary below. Regenerate when the binary, the level, or the pins change.
-    // NOTE: not yet registered on L1.
+    // NOTE: not yet registered on L1, and STALE: generated at airbender 5b59f763, so it binds
+    // the pre-rebuild commitment. Job assignment and FRI verification only match the hash, so
+    // proving works, but regenerate before V8 proofs settle on L1.
     vk_hash: VerificationKeyHash(
         "0x11acc8a8a687378c6fa8bb4198512e9a4a35c64c02c46195fb681f35558a511c",
     ),
-    airbender_version: AirbenderVersion("fix/87680-fri-fix-dev @ 5b59f763"),
+    airbender_version: AirbenderVersion("di/fix/87680-fri-fix-dev @ af42767a"),
     zksync_os_version: ZkSyncOSVersion("v0.5.0"),
-    zkos_wrapper: ZkOsWrapperVersion("fix/87680-fri-fix-dev @ a2d00237"),
+    zkos_wrapper: ZkOsWrapperVersion("di/fix/87680-fri-fix-dev @ 301e380e"),
     // zksync-os v0.5.0 release tag (@ 20fdb610), built reproducibly.
     bin_md5sum: BinMd5Sum("2d4fb2f9c75918d60605437c0d2a1ff7"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
     // Specific to the 100-bit level below, like the vk_hash above.
-    // From `wrapper compute-aux-params` at the fix/87680 pins.
+    // From `wrapper compute-aux-params` at the pins below.
     program_commitment: Some(ProgramCommitment([
-        0xf8b1d26c, 0x71fad219, 0x4e0cdab7, 0xc28d0fbe, 0xd137018c, 0xd990261f, 0x6d2f9b5a,
-        0xedf1cf38,
+        0x703c3271, 0x5b8d6683, 0x62782532, 0xf6564de8, 0x5a89b6b4, 0xf51cedc2, 0x3849dcb9,
+        0xfc29c2d6,
     ])),
     security_level: Some(SecurityLevel::Security100),
 };
