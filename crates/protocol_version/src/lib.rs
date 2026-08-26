@@ -151,29 +151,29 @@ const V7: ProtocolVersion = ProtocolVersion {
     security_level: None,
 };
 
-/// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.5.1 native batch prover)
+/// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.5.2 native batch prover)
 const V8: ProtocolVersion = ProtocolVersion {
     // Keccak256 of the phase-3 SNARK VK (`generate-vk --check-aux-params`), so it binds the
     // app binary and the program commitment below. Regenerate when the binary, the level, or the
     // pins change - a moved commitment moves this too.
     // NOTE: not yet registered on L1.
     vk_hash: VerificationKeyHash(
-        "0x0800baf06c9e2a4742f94908a792e2e31e3229fb73963e638ef3a604669bdacf",
+        "0xc0a8056bc41196373af748e64b1fd51a72683e7031ed62545e6cd385bafbfa9f",
     ),
     airbender_version: AirbenderVersion("di/fix/87680-fri-fix-dev @ af42767a"),
-    zksync_os_version: ZkSyncOSVersion("v0.5.1-private"),
+    zksync_os_version: ZkSyncOSVersion("v0.5.2-private"),
     zkos_wrapper: ZkOsWrapperVersion("di/fix/87680-fri-fix-dev @ 301e380e"),
-    // zksync-os v0.5.1-private release tag (@ 8f7a4880), built reproducibly; sha256
-    // 69957c52f82f11757aa6de83ebfde9981db69afbeff9684f5dcca0bfd01a83fd. Byte-identical to the
-    // v0.5.0 asset: that tag moves only the host toolchain, and the guest stays on
-    // nightly-2026-02-10, so none of the constants here move with it.
-    bin_md5sum: BinMd5Sum("2d4fb2f9c75918d60605437c0d2a1ff7"),
+    // zksync-os v0.5.2-private release tag (@ 76fa5e08), built reproducibly; sha256
+    // 463ed63b721d06a0f528c8d111839ea07169ff682b274b331438ccbd3e3b3193. That tag moves the
+    // guest toolchain to nightly-2026-08-09, so unlike v0.5.1-private it is a new binary and
+    // every constant here moved with it.
+    bin_md5sum: BinMd5Sum("1aae895531cdec342e7b160b069ba984"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
     // Specific to the 100-bit level below, like the vk_hash above.
     // From `wrapper compute-aux-params` at the pins below.
     program_commitment: Some(ProgramCommitment([
-        0x703c3271, 0x5b8d6683, 0x62782532, 0xf6564de8, 0x5a89b6b4, 0xf51cedc2, 0x3849dcb9,
-        0xfc29c2d6,
+        0x9e72235f, 0x277bf8e0, 0xae6afc56, 0x2e651b3f, 0x12e5f1c3, 0x17265552, 0x26375f10,
+        0x257bf09d,
     ])),
     security_level: Some(SecurityLevel::Security100),
 };
