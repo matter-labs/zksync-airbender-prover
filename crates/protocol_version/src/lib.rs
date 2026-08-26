@@ -154,12 +154,11 @@ const V7: ProtocolVersion = ProtocolVersion {
 /// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.5.0 native batch prover)
 const V8: ProtocolVersion = ProtocolVersion {
     // Keccak256 of the phase-3 SNARK VK (`generate-vk --check-aux-params`), so it binds the
-    // app binary below. Regenerate when the binary, the level, or the pins change.
-    // NOTE: not yet registered on L1, and STALE: generated at airbender 5b59f763, so it binds
-    // the pre-rebuild commitment. Job assignment and FRI verification only match the hash, so
-    // proving works, but regenerate before V8 proofs settle on L1.
+    // app binary and the program commitment below. Regenerate when the binary, the level, or the
+    // pins change - a moved commitment moves this too.
+    // NOTE: not yet registered on L1.
     vk_hash: VerificationKeyHash(
-        "0x11acc8a8a687378c6fa8bb4198512e9a4a35c64c02c46195fb681f35558a511c",
+        "0x0800baf06c9e2a4742f94908a792e2e31e3229fb73963e638ef3a604669bdacf",
     ),
     airbender_version: AirbenderVersion("di/fix/87680-fri-fix-dev @ af42767a"),
     zksync_os_version: ZkSyncOSVersion("v0.5.0"),
