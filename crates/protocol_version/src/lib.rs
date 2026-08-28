@@ -151,23 +151,30 @@ const V7: ProtocolVersion = ProtocolVersion {
     security_level: None,
 };
 
-/// Corresponds to server's execution_version 8 (protocol v32.0, zksync-os 0.4.0 native batch prover)
+/// Corresponds to server's proving version V10 (protocol v33.0, zksync-os 0.5.3-private
+/// native batch prover); the `V8` name here predates the server-side renumbering.
 const V8: ProtocolVersion = ProtocolVersion {
     // Keccak256 of the phase-3 SNARK VK (`generate-vk --check-aux-params`), so it binds the
-    // app binary below. Regenerate when the binary, the level, or the pins change.
+    // app binary and the program commitment below. Regenerate when the binary, the level, or the
+    // pins change - a moved commitment moves this too.
+    // NOTE: not yet registered on L1.
     vk_hash: VerificationKeyHash(
-        "0x9f7576b911e7d3f528d49f894208682c81800814db9e3beac7fc3b1c4d626e7a",
+        "0x29651d5f044e1671ff820f85018ed87b26f57402222eb31dd453206e2379bc9c",
     ),
-    airbender_version: AirbenderVersion("v0.6.0-rc.2"),
-    zksync_os_version: ZkSyncOSVersion("v0.4.0"),
-    zkos_wrapper: ZkOsWrapperVersion("v0.6.0-rc.2"),
-    // zksync-os v0.4.0 release tag (@ 69bc4305), built reproducibly.
-    bin_md5sum: BinMd5Sum("31cb9cb3b42d4a183fb858594eeb8706"),
+    airbender_version: AirbenderVersion("di/fix/87680-fri-fix-dev @ af42767a"),
+    zksync_os_version: ZkSyncOSVersion("v0.5.3-private"),
+    zkos_wrapper: ZkOsWrapperVersion("di/fix/87680-fri-fix-dev @ 301e380e"),
+    // zksync-os v0.5.3-private release tag (@ c8709ca5), built reproducibly; sha256
+    // 5743a82a713be186bca21f7fa2f4a84b59d964f23781f87d149471dee975b486, byte-identical to the
+    // asset published on that release. The tag changes the L1-transaction flow (prewarm is
+    // allowed to fail), so it is a new binary and every constant here moved with it.
+    bin_md5sum: BinMd5Sum("802412374f7aa2cf506a548c25d07e8a"),
     // base -> unrolled -> unified: what real proofs expose in registers 18..=25.
     // Specific to the 100-bit level below, like the vk_hash above.
+    // From `wrapper compute-aux-params` at the pins below.
     program_commitment: Some(ProgramCommitment([
-        0xad042447, 0x3747a5ec, 0xba3294e4, 0xde778e30, 0x5b433c2c, 0x27948140, 0x84ccda7a,
-        0xc817312d,
+        0x6d20dde5, 0x63e39422, 0x96587bd3, 0xce0ae20c, 0x8d8c0add, 0xeec167d8, 0x5c327b26,
+        0xf2ee90d7,
     ])),
     security_level: Some(SecurityLevel::Security100),
 };
